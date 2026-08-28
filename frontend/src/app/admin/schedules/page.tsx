@@ -123,7 +123,7 @@ export default function SchedulesPage() {
   const handleClearAllShifts = () => {
     saveShiftDataState({});
     setShowClearConfirmModal(false);
-    setOverlapWarning('🗑️ Todos los turnos de la sucursal han sido eliminados.');
+    setOverlapWarning('🗑️ All branch shifts have been cleared.');
     setTimeout(() => setOverlapWarning(null), 4000);
   };
 
@@ -200,12 +200,12 @@ export default function SchedulesPage() {
 
   // Check for shift collision / overlap
   const checkOverlap = (empId: string, day: string, newTime: string): boolean => {
-    const existing = shiftData[empId]?.[day];
+    const emp = employees.find((e) => e.id === empId || e.employeeNumber === empId);
+    const existing = shiftData[empId]?.[day] || (emp?.employeeNumber ? shiftData[emp.employeeNumber]?.[day] : undefined);
     if (existing && existing !== newTime) {
-      const emp = employees.find((e) => e.id === empId);
-      const empName = emp ? `${emp.firstName} ${emp.lastName}` : 'el trabajador';
+      const empName = emp ? `${emp.firstName} ${emp.lastName}` : 'the staff member';
       setOverlapWarning(
-        `🚨 CONFLICTO DETECTADO: ${empName} ya tiene asignado el horario "${existing}" el ${day}. No se pueden solapar turnos en el mismo día.`
+        `🚨 SHIFT CONFLICT DETECTED: ${empName} already has shift "${existing}" assigned for ${day}. Cannot overlap shifts on the same day.`
       );
       setTimeout(() => setOverlapWarning(null), 5000);
       return true;
@@ -251,7 +251,8 @@ export default function SchedulesPage() {
       return;
     }
 
-    const existingShift = shiftData[empId]?.[day];
+    const emp = employees.find((e) => e.id === empId || e.employeeNumber === empId);
+    const existingShift = shiftData[empId]?.[day] || (emp?.employeeNumber ? shiftData[emp.employeeNumber]?.[day] : undefined);
     const { start24, end24 } = parseShiftStringTo24(existingShift);
 
     setFormData({
@@ -277,7 +278,7 @@ export default function SchedulesPage() {
     if (!targetEmpId) return;
 
     if (formData.startTime24 === formData.endTime24) {
-      setOverlapWarning('⚠️ La hora de entrada y salida no pueden ser idénticas.');
+      setOverlapWarning('⚠️ Shift start and end time cannot be identical.');
       return;
     }
 
@@ -288,11 +289,14 @@ export default function SchedulesPage() {
 
   const handleRemoveShift = (empId: string, day: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    const emp = employees.find((e) => e.id === empId || e.employeeNumber === empId);
+    const empKey = emp?.id || empId;
+    const empNumKey = emp?.employeeNumber;
+
     const updated = { ...shiftData };
-    if (updated[empId]) {
-      delete updated[empId][day];
-      saveShiftDataState(updated);
-    }
+    if (updated[empKey]) delete updated[empKey][day];
+    if (empNumKey && updated[empNumKey]) delete updated[empNumKey][day];
+    saveShiftDataState(updated);
     setShowAssignModal(false);
   };
 

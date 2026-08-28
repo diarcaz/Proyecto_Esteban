@@ -339,6 +339,21 @@ export function PinPad() {
     setCapturedPhoto(null);
   };
 
+  const isPunchLate = (nowDate: Date, scheduledInStr: string): boolean => {
+    if (!scheduledInStr) return false;
+    const match = scheduledInStr.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+    if (!match) return false;
+    let hours = parseInt(match[1], 10);
+    const minutes = parseInt(match[2], 10);
+    const ampm = match[3]?.toUpperCase();
+    if (ampm === 'PM' && hours < 12) hours += 12;
+    if (ampm === 'AM' && hours === 12) hours = 0;
+
+    const schedDate = new Date(nowDate);
+    schedDate.setHours(hours, minutes + 15, 0, 0); // 15 min grace period
+    return nowDate.getTime() > schedDate.getTime();
+  };
+
   const handlePunchAction = async (type: 'CLOCK_IN' | 'LUNCH_START' | 'LUNCH_END' | 'CLOCK_OUT') => {
     if (!activeEmp || isLockedOut) return;
 
@@ -365,6 +380,7 @@ export function PinPad() {
     let updatedPunch: any;
 
     if (type === 'CLOCK_IN') {
+      const isLate = isPunchLate(now, schedIn);
       updatedPunch = {
         id: existingPunch ? existingPunch.id : `kiosk-punch-${Date.now()}`,
         userId: activeEmp.id,
@@ -380,9 +396,9 @@ export function PinPad() {
         lunchStart: undefined,
         lunchEnd: undefined,
         takenLunch: false,
-        calculatedHours: undefined,
+        calculatedHours: 0.0,
         isOvertime: false,
-        status: 'ON_TIME',
+        status: isLate ? 'LATE' : 'ON_TIME',
       };
     } else if (type === 'LUNCH_START') {
       updatedPunch = {

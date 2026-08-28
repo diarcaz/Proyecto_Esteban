@@ -61,7 +61,10 @@ export function Sidebar() {
           return;
         }
       } catch (e) {}
-      const mockFiltered = MOCK_EMPLOYEES.filter(emp => emp.jobPositionCode !== 'SUPER_ADMIN' && !emp.employeeNumber?.startsWith('ADM-'));
+      const mockFiltered = MOCK_EMPLOYEES.filter((emp) => {
+        if (emp.jobPositionCode === 'SUPER_ADMIN' || emp.employeeNumber?.startsWith('ADM-')) return false;
+        return isLocationMatching(emp.locationId, emp.locationCode, selectedLocationId);
+      });
       setStaffCount(mockFiltered.length);
     }
     getStaffCount();

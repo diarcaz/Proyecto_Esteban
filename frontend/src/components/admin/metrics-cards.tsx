@@ -39,7 +39,7 @@ export function MetricsCards() {
   const totalCount = locationPunches.length || 1;
   const onTimeRate = Math.min(100, Math.round((onTimeCount / totalCount) * 1000) / 10 || 94.8);
 
-  const activeStaffCount = totalStaff || (selectedLocationId === 'ALL' ? 165 : 48);
+  const activeStaffCount = totalStaff || 9;
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 font-sans">
