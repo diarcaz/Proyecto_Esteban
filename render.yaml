@@ -45,11 +45,7 @@ services:
       - key: PORT
         value: 3000
       - key: NEXT_PUBLIC_API_URL
-        fromService:
-          type: web
-          name: nexustaff-backend
-          property: url
-          suffix: /api/v1
+        value: https://nexustaff-backend.onrender.com/api/v1
 
   # 3. Redis Store (JWT Refresh Token Revocation & Cache)
   - type: redis
@@ -61,5 +57,5 @@ databases:
   # 4. Managed PostgreSQL Database
   - name: nexustaff-db
     databaseName: nexustaff_db
-    user: postgres
+    user: nexustaff_user
     plan: free
