@@ -1,0 +1,194 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  LOCATION_ADMIN
+  SUPERVISOR
+  WORKER
+}
+
+enum UserStatus {
+  ACTIVE
+  TERMINATED
+}
+
+enum AttendanceType {
+  CLOCK_IN
+  LUNCH_START
+  LUNCH_END
+  CLOCK_OUT
+}
+
+enum AttendanceStatus {
+  ON_TIME
+  LATE
+  EARLY_LEAVE
+  OVERTIME
+}
+
+enum AttendanceMethod {
+  MOBILE_GEO
+  KIOSK_PIN
+  MANUAL_OVERRIDE
+}
+
+model Company {
+  id        String     @id @default(uuid())
+  name      String
+  taxId     String     @map("tax_id")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+  locations Location[]
+
+  @@map("companies")
+}
+
+model Location {
+  id           String                   @id @default(uuid())
+  companyId    String                   @map("company_id")
+  name         String
+  address      String
+  timezone     String                   @default("America/New_York")
+  locationCode String                   @map("location_code")
+  createdAt    DateTime                 @default(now()) @map("created_at")
+  updatedAt    DateTime                 @updatedAt @map("updated_at")
+  company      Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assignments  UserLocationAssignment[]
+  logs         AttendanceLog[]
+  departments  Department[]
+  shifts       Shift[]
+  schedules    ShiftSchedule[]
+
+  @@map("locations")
+}
+
+model Department {
+  id         String   @id @default(uuid())
+  locationId String   @map("location_id")
+  name       String
+  deptCode   String   @map("dept_code")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  users      User[]
+
+  @@map("departments")
+}
+
+model Shift {
+  id              String          @id @default(uuid())
+  locationId      String          @map("location_id")
+  name            String
+  startTime       String          @map("start_time")
+  endTime         String          @map("end_time")
+  gracePeriodMins Int             @default(15) @map("grace_period_mins")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  location        Location        @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  schedules       ShiftSchedule[]
+
+  @@map("shifts")
+}
+
+model ShiftSchedule {
+  id           String          @id @default(uuid())
+  userId       String          @map("user_id")
+  locationId   String          @map("location_id")
+  shiftId      String          @map("shift_id")
+  scheduledIn  DateTime        @map("scheduled_in")
+  scheduledOut DateTime        @map("scheduled_out")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location     Location        @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  shift        Shift           @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  logs         AttendanceLog[]
+
+  @@map("shift_schedules")
+}
+
+model User {
+  id                String                   @id @default(uuid())
+  employeeNumber    String                   @unique @map("employee_number")
+  firstName         String                   @map("first_name")
+  lastName          String                   @map("last_name")
+  email             String                   @unique
+  passwordHash      String                   @map("password_hash")
+  role              UserRole                 @default(WORKER)
+  jobPositionCode   String                   @default("STAFF") @map("job_position_code")
+  hourlyRate        Decimal                  @default(15.00) @map("hourly_rate") @db.Decimal(10, 2)
+  pinCode           String?                  @unique @map("pin_code")
+  pinCodeHash       String?                  @map("pin_code_hash")
+  preferredLanguage String                   @default("es") @map("preferred_language")
+  departmentId      String?                  @map("department_id")
+  status            UserStatus               @default(ACTIVE)
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+  department        Department?              @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  assignments       UserLocationAssignment[]
+  attendanceLogs    AttendanceLog[]
+  auditLogs         AuditLog[]
+  shiftSchedules    ShiftSchedule[]
+
+  @@map("users")
+}
+
+model UserLocationAssignment {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  locationId String   @map("location_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, locationId])
+  @@map("user_location_assignments")
+}
+
+model AttendanceLog {
+  id                   String           @id @default(uuid())
+  userId               String           @map("user_id")
+  locationId           String           @map("location_id")
+  shiftScheduleId      String?          @map("shift_schedule_id")
+  timestamp            DateTime         @default(now())
+  punchType            AttendanceType   @map("punch_type")
+  punchMethod          AttendanceMethod @default(KIOSK_PIN) @map("punch_method")
+  actualTimestamp      DateTime         @default(now()) @map("actual_timestamp")
+  takenLunch           Boolean          @default(false) @map("taken_lunch")
+  calculatedHours      Decimal?         @map("calculated_hours") @db.Decimal(5, 2)
+  isOvertime           Boolean          @default(false) @map("is_overtime")
+  isOvertimeApproved   Boolean          @default(false) @map("is_overtime_approved")
+  status               AttendanceStatus @default(ON_TIME)
+  deviceInfo           Json?            @map("device_info")
+  photoUrl             String?          @map("photo_url")
+  locationCoordinates  Json?            @map("location_coordinates")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  user                 User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location             Location         @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  shiftSchedule        ShiftSchedule?   @relation(fields: [shiftScheduleId], references: [id], onDelete: SetNull)
+
+  @@index([userId, timestamp])
+  @@index([locationId, timestamp])
+  @@map("attendance_logs")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  actorId      String   @map("actor_id")
+  action       String
+  targetEntity String?  @map("target_entity")
+  details      Json?
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  createdAt    DateTime @default(now()) @map("created_at")
+  user         User     @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@map("audit_logs")
+}

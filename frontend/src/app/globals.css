@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    @apply bg-slate-950 text-slate-100 antialiased font-sans selection:bg-blue-600 selection:text-white;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #090d16;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 9999px;
+}
+
+/* Floating Ambient Blob Animation */
+@keyframes blob {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+}
+
+.animate-blob {
+  animation: blob 10s infinite ease-in-out;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+/* Connecteam Glassmorphism & 3D Tactile Buttons */
+.connecteam-glass-card {
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+}
+
+.kiosk-btn-3d {
+  box-shadow: 0 6px 0 #0f172a, 0 10px 20px rgba(0, 0, 0, 0.4);
+  transition: all 0.15s ease-out;
+}
+
+.kiosk-btn-3d:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 #0f172a, 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+.connecteam-glow-blue {
+  box-shadow: 0 0 25px rgba(37, 99, 235, 0.35);
+}
+
+.connecteam-glow-emerald {
+  box-shadow: 0 0 25px rgba(16, 185, 129, 0.35);
+}
+
+.connecteam-glow-amber {
+  box-shadow: 0 0 25px rgba(245, 158, 11, 0.35);
+}
+
+.connecteam-glow-rose {
+  box-shadow: 0 0 25px rgba(244, 63, 94, 0.35);
+}
+
+/* Analog Clock Hands Origin */
+.clock-hand {
+  transform-origin: 50% 100%;
+  transition: transform 0.2s cubic-bezier(0.4, 2.08, 0.55, 0.44);
+}
+
+.clock-hand-second {
+  transform-origin: 50% 100%;
+  transition: transform 0.1s linear;
+}

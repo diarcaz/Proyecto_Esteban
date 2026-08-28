@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # 1. Servicio Base de Datos PostgreSQL 16
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexustaff_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: nexustaff_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d nexustaff_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. Servicio Cache Redis 7 (JWT Refresh Token Revocation & Store)
+  redis:
+    image: redis:7-alpine
+    container_name: nexustaff_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 3. Servicio Backend (NestJS API & WebSockets)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nexustaff_backend
+    restart: always
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/nexustaff_db?schema=public"
+      REDIS_HOST: "redis"
+      REDIS_PORT: 6379
+      JWT_SECRET: "nexustaff_jwt_super_secret_key_2026"
+      JWT_EXPIRATION: "1d"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # 4. Servicio Frontend (Next.js 14 App Router)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "http://localhost:3001/api/v1"
+    container_name: nexustaff_frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: "http://localhost:3001/api/v1"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:

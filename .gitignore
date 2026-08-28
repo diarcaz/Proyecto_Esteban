@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build Output
+dist/
+.next/
+build/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE & OS
+.DS_Store
+.idea
+.vscode/
+
+# Logs
+*.log
+
+# Prisma
+prisma/migrations/dev.db
+*.db
+

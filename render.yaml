@@ -1,0 +1,65 @@
+# Render Blueprint Configuration (Infrastructure as Code)
+# Project: NexuStaff (Enterprise Attendance & Staffing Management)
+
+services:
+  # 1. Backend API Service (NestJS + Swagger + WebSockets)
+  - type: web
+    name: nexustaff-backend
+    runtime: docker
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nexustaff-db
+          property: connectionString
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: nexustaff-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: nexustaff-redis
+          property: port
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRATION
+        value: 7d
+
+  # 2. Frontend Application (Next.js 14 App Router)
+  - type: web
+    name: nexustaff-frontend
+    runtime: docker
+    dockerContext: ./frontend
+    dockerfilePath: ./frontend/Dockerfile
+    plan: free
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: nexustaff-backend
+          property: url
+          suffix: /api/v1
+
+  # 3. Redis Store (JWT Refresh Token Revocation & Cache)
+  - type: redis
+    name: nexustaff-redis
+    ipAllowList: []
+    plan: free
+
+databases:
+  # 4. Managed PostgreSQL Database
+  - name: nexustaff-db
+    databaseName: nexustaff_db
+    user: postgres
+    plan: free
