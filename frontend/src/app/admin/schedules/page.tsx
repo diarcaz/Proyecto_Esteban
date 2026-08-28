@@ -98,10 +98,7 @@ export default function SchedulesPage() {
         }
       } catch (e) {}
     }
-    return {
-      'emp-101': { Monday: '08:00 AM - 04:30 PM', Tuesday: '08:00 AM - 04:30 PM', Wednesday: '08:00 AM - 04:30 PM', Thursday: '08:00 AM - 04:30 PM', Friday: '08:00 AM - 04:30 PM' },
-      'emp-102': { Monday: '08:00 AM - 04:30 PM', Tuesday: '08:00 AM - 04:30 PM', Wednesday: '08:00 AM - 04:30 PM', Thursday: '08:00 AM - 04:30 PM', Friday: '08:00 AM - 04:30 PM' },
-    };
+    return {};
   });
 
   const [formData, setFormData] = useState({
