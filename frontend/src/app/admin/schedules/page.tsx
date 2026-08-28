@@ -29,10 +29,10 @@ import {
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 const SHIFT_PRESETS = [
-  { label: 'Turno Mañana', time: '08:00 AM - 04:30 PM', startTime24: '08:00', endTime24: '16:30', icon: Sun, color: 'bg-blue-600/20 text-blue-300 border-blue-500/40 hover:bg-blue-600/30' },
-  { label: 'Turno Tarde', time: '01:00 PM - 09:30 PM', startTime24: '13:00', endTime24: '21:30', icon: Sunset, color: 'bg-amber-600/20 text-amber-300 border-amber-500/40 hover:bg-amber-600/30' },
-  { label: 'Turno Noche', time: '10:00 PM - 06:30 AM', startTime24: '22:00', endTime24: '06:30', icon: Moon, color: 'bg-indigo-600/20 text-indigo-300 border-indigo-500/40 hover:bg-indigo-600/30' },
-  { label: 'Turno 12 Horas', time: '07:00 AM - 07:30 PM', startTime24: '07:00', endTime24: '19:30', icon: Zap, color: 'bg-purple-600/20 text-purple-300 border-purple-500/40 hover:bg-purple-600/30' },
+  { label: 'Morning Shift', time: '08:00 AM - 04:30 PM', startTime24: '08:00', endTime24: '16:30', icon: Sun, color: 'bg-blue-600/20 text-blue-300 border-blue-500/40 hover:bg-blue-600/30' },
+  { label: 'Afternoon Shift', time: '01:00 PM - 09:30 PM', startTime24: '13:00', endTime24: '21:30', icon: Sunset, color: 'bg-amber-600/20 text-amber-300 border-amber-500/40 hover:bg-amber-600/30' },
+  { label: 'Night Shift', time: '10:00 PM - 06:30 AM', startTime24: '22:00', endTime24: '06:30', icon: Moon, color: 'bg-indigo-600/20 text-indigo-300 border-indigo-500/40 hover:bg-indigo-600/30' },
+  { label: '12-Hour Shift', time: '07:00 AM - 07:30 PM', startTime24: '07:00', endTime24: '19:30', icon: Zap, color: 'bg-purple-600/20 text-purple-300 border-purple-500/40 hover:bg-purple-600/30' },
 ];
 
 function format24to12(time24: string): string {
@@ -310,9 +310,9 @@ export default function SchedulesPage() {
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs font-black uppercase tracking-widest mb-2">
             <CalendarIcon className="h-3.5 w-3.5" /> SHIFT SCHEDULE MANAGEMENT
           </div>
-          <h1 className="text-2xl font-black text-white tracking-tight">Planificación de Turnos y Horarios</h1>
+          <h1 className="text-2xl font-black text-white tracking-tight">Shift Schedule &amp; Rostering</h1>
           <p className="text-xs text-slate-400 font-medium">
-            Asigna horarios semanales fácilmente con plantillas rápidas o selectores táctiles sin necesidad de escribir texto.
+            Easily assign weekly schedules with quick 1-tap presets or touch selectors.
           </p>
         </div>
 
@@ -320,9 +320,9 @@ export default function SchedulesPage() {
           <button
             onClick={() => setShowClearConfirmModal(true)}
             className="flex items-center gap-2 bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800 font-bold text-xs px-3.5 py-2.5 rounded-xl transition-all cursor-pointer"
-            title="Limpiar todos los turnos asignados de la sucursal"
+            title="Clear all assigned shifts for this branch"
           >
-            <RotateCcw className="h-4 w-4 text-rose-400" /> Vaciar Todos los Turnos
+            <RotateCcw className="h-4 w-4 text-rose-400" /> Clear All Shifts
           </button>
 
           <button
@@ -339,7 +339,7 @@ export default function SchedulesPage() {
             }}
             className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer"
           >
-            <Plus className="h-4 w-4" /> Asignar Nuevo Turno
+            <Plus className="h-4 w-4" /> Assign New Shift
           </button>
         </div>
       </div>
@@ -361,19 +361,19 @@ export default function SchedulesPage() {
       <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl shadow-lg space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-xs font-extrabold text-slate-300 flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-amber-400" /> Plantillas de Asignación Rápida (Táctil y Celular)
+            <Sparkles className="h-4 w-4 text-amber-400" /> 1-Tap Quick Shift Presets (Touch &amp; Mobile Ready)
           </span>
           {activePreset && (
             <button
               onClick={() => setActivePreset(null)}
               className="text-[11px] font-bold text-rose-400 hover:text-rose-300 underline cursor-pointer"
             >
-              Desactivar Pincel Rápido
+              Deactivate Quick Brush
             </button>
           )}
         </div>
         <p className="text-[11px] text-slate-400 font-medium">
-          Haz clic en un turno prestablecido para activarlo y luego toca cualquier celda en la tabla para asignarlo de inmediato en 1 toque.
+          Click a preset shift to activate it, then tap any grid cell below to instantly assign it in 1 tap.
         </p>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
@@ -410,7 +410,7 @@ export default function SchedulesPage() {
           <table className="w-full text-left border-collapse min-w-[900px]">
             <thead>
               <tr className="bg-slate-950/80 border-b border-slate-800 text-xs font-extrabold text-slate-400 uppercase tracking-wider">
-                <th className="p-4 w-56 sticky left-0 bg-slate-950/95 border-r border-slate-800 z-10">Personal</th>
+                <th className="p-4 w-56 sticky left-0 bg-slate-950/95 border-r border-slate-800 z-10">Staff Member</th>
                 {DAYS.map((day) => (
                   <th key={day} className="p-4 text-center border-r border-slate-800/60 min-w-[140px]">
                     {day}
@@ -422,7 +422,7 @@ export default function SchedulesPage() {
               {filteredEmployees.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="p-8 text-center text-slate-500 font-bold">
-                    No se encontraron trabajadores en esta sucursal para asignar turnos.
+                    No staff members found for the selected branch to assign shifts.
                   </td>
                 </tr>
               ) : (
@@ -461,14 +461,14 @@ export default function SchedulesPage() {
                               <button
                                 onClick={(e) => handleRemoveShift(emp.id, day, e)}
                                 className="h-5 w-5 rounded-full bg-rose-600/90 hover:bg-rose-500 text-white flex items-center justify-center transition-opacity shadow-md cursor-pointer ml-1 shrink-0"
-                                title="Eliminar turno"
+                                title="Remove shift"
                               >
                                 <X className="h-3 w-3" />
                               </button>
                             </div>
                           ) : (
                             <div className="h-11 rounded-xl border border-dashed border-slate-800 hover:border-blue-500/50 flex items-center justify-center text-slate-500 hover:text-blue-400 text-[10px] font-extrabold transition-colors">
-                              <span>+ Asignar</span>
+                              <span>+ Assign</span>
                             </div>
                           )}
                         </td>
@@ -490,9 +490,9 @@ export default function SchedulesPage() {
               <Trash2 className="h-7 w-7" />
             </div>
             <div>
-              <h3 className="text-lg font-black text-white">¿Vaciar todos los turnos?</h3>
+              <h3 className="text-lg font-black text-white">Clear all shifts?</h3>
               <p className="text-xs text-slate-400 mt-1 font-medium">
-                Esta acción eliminará todos los turnos asignados actualmente en esta sucursal. Podrás volver a asignar nuevos turnos en cualquier momento.
+                This action will delete all currently assigned shifts for this branch. You can assign new shifts at any time.
               </p>
             </div>
             <div className="flex items-center justify-center gap-3 pt-2">
@@ -500,13 +500,13 @@ export default function SchedulesPage() {
                 onClick={() => setShowClearConfirmModal(false)}
                 className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold hover:bg-slate-700 cursor-pointer"
               >
-                Cancelar
+                Cancel
               </button>
               <button
                 onClick={handleClearAllShifts}
                 className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black shadow-lg cursor-pointer"
               >
-                Sí, Vaciar Todos
+                Yes, Clear All
               </button>
             </div>
           </div>
@@ -520,9 +520,9 @@ export default function SchedulesPage() {
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div>
                 <h3 className="text-base font-extrabold text-white flex items-center gap-2">
-                  <Clock className="h-5 w-5 text-blue-400" /> Editar / Asignar Turno de Trabajo
+                  <Clock className="h-5 w-5 text-blue-400" /> Edit / Assign Work Shift
                 </h3>
-                <p className="text-xs text-slate-400 font-medium">Horario actual precargado para modificación inmediata</p>
+                <p className="text-xs text-slate-400 font-medium">Pre-loaded with current shift hours for quick edits</p>
               </div>
               <button onClick={() => setShowAssignModal(false)} className="text-slate-400 hover:text-white p-1">
                 <X className="h-5 w-5" />
@@ -532,7 +532,7 @@ export default function SchedulesPage() {
             {/* Select Employee & Day */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div>
-                <label className="block text-slate-400 font-bold mb-1">Trabajador</label>
+                <label className="block text-slate-400 font-bold mb-1">Staff Member</label>
                 <select
                   value={formData.empId || filteredEmployees[0]?.id || ''}
                   onChange={(e) => setFormData({ ...formData, empId: e.target.value })}
@@ -547,7 +547,7 @@ export default function SchedulesPage() {
               </div>
 
               <div>
-                <label className="block text-slate-400 font-bold mb-1">Día de la Semana</label>
+                <label className="block text-slate-400 font-bold mb-1">Day of the Week</label>
                 <select
                   value={formData.day}
                   onChange={(e) => setFormData({ ...formData, day: e.target.value })}
@@ -565,7 +565,7 @@ export default function SchedulesPage() {
             {/* SECTION A: 1-TAP PRESET BUTTONS */}
             <div className="space-y-2 pt-1 border-t border-slate-800">
               <label className="block text-slate-300 font-extrabold text-xs flex items-center gap-1.5">
-                <Sparkles className="h-4 w-4 text-amber-400" /> Opción 1: Seleccionar Turno Predefinido (1 toque)
+                <Sparkles className="h-4 w-4 text-amber-400" /> Option 1: Select Preset Shift (1 Tap)
               </label>
               <div className="grid grid-cols-2 gap-2">
                 {SHIFT_PRESETS.map((preset) => {
@@ -592,24 +592,24 @@ export default function SchedulesPage() {
             <form onSubmit={handleAssignShiftSubmit} className="space-y-4 pt-2 border-t border-slate-800 text-xs">
               <div className="flex items-center justify-between">
                 <label className="block text-slate-300 font-extrabold flex items-center gap-1.5">
-                  <Clock className="h-4 w-4 text-blue-400" /> Opción 2: Horario Personalizado (Selector Táctil)
+                  <Clock className="h-4 w-4 text-blue-400" /> Option 2: Custom Shift Time (Touch Selector)
                 </label>
 
                 {isOvernightShift && (
                   <span className="text-[10px] font-black text-purple-300 bg-purple-500/20 px-2.5 py-0.5 rounded-md border border-purple-500/30 flex items-center gap-1">
-                    <Moon className="h-3 w-3" /> Nocturno (Cruza Medianoche)
+                    <Moon className="h-3 w-3" /> Night Shift (Overnight)
                   </span>
                 )}
                 {isSameTimeShift && (
                   <span className="text-[10px] font-black text-rose-300 bg-rose-500/20 px-2.5 py-0.5 rounded-md border border-rose-500/30 flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3" /> Horas Idénticas
+                    <AlertCircle className="h-3 w-3" /> Identical Hours
                   </span>
                 )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-400 font-bold mb-1">Hora Inicio Entrada</label>
+                  <label className="block text-slate-400 font-bold mb-1">Shift Start Time</label>
                   <input
                     type="time"
                     required
@@ -618,12 +618,12 @@ export default function SchedulesPage() {
                     className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-center text-sm font-bold cursor-pointer"
                   />
                   <p className="text-[10px] text-slate-400 font-extrabold text-center mt-1">
-                    Formato: <span className="text-blue-400">{format24to12(formData.startTime24)}</span>
+                    Format: <span className="text-blue-400">{format24to12(formData.startTime24)}</span>
                   </p>
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-bold mb-1">Hora Fin Salida</label>
+                  <label className="block text-slate-400 font-bold mb-1">Shift End Time</label>
                   <input
                     type="time"
                     required
@@ -632,7 +632,7 @@ export default function SchedulesPage() {
                     className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-center text-sm font-bold cursor-pointer"
                   />
                   <p className="text-[10px] text-slate-400 font-extrabold text-center mt-1">
-                    Formato: <span className="text-blue-400">{format24to12(formData.endTime24)}</span>
+                    Format: <span className="text-blue-400">{format24to12(formData.endTime24)}</span>
                   </p>
                 </div>
               </div>
@@ -644,7 +644,7 @@ export default function SchedulesPage() {
                     onClick={() => handleRemoveShift(formData.empId, formData.day)}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600/20 text-rose-300 hover:bg-rose-600/30 border border-rose-500/30 text-xs font-bold cursor-pointer transition-colors"
                   >
-                    <Trash2 className="h-3.5 w-3.5" /> Eliminar Turno
+                    <Trash2 className="h-3.5 w-3.5" /> Remove Shift
                   </button>
                 ) : (
                   <div />
@@ -656,10 +656,10 @@ export default function SchedulesPage() {
                     onClick={() => setShowAssignModal(false)}
                     className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 font-bold cursor-pointer hover:bg-slate-700"
                   >
-                    Cancelar
+                    Cancel
                   </button>
                   <button type="submit" className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black cursor-pointer shadow-lg">
-                    Guardar Horario Personalizado
+                    Save Custom Schedule
                   </button>
                 </div>
               </div>

@@ -45,10 +45,10 @@ export function LocationSwitcher() {
         <div className="flex items-center gap-2.5 rounded-2xl border border-blue-500/30 bg-blue-500/10 px-3.5 py-1.5 shadow-sm">
           <MapPin className="h-4 w-4 text-blue-400" />
           <span className="text-[10px] font-black uppercase tracking-wider text-blue-300 flex items-center gap-1">
-            <Lock className="h-3 w-3" /> Sucursal Asignada:
+            <Lock className="h-3 w-3" /> Assigned Branch:
           </span>
           <span className="text-xs font-black text-white">
-            {activeLoc ? `[${activeLoc.code}] ${activeLoc.name}` : 'Sucursal Centro - MÉRIDA'}
+            {activeLoc ? `[${activeLoc.code}] ${activeLoc.name}` : 'Downtown Branch - MERIDA'}
           </span>
         </div>
       </div>
@@ -59,14 +59,14 @@ export function LocationSwitcher() {
     <div className="flex items-center gap-2">
       <div className="flex items-center gap-2.5 rounded-2xl border border-slate-800 bg-slate-900/90 px-3.5 py-1.5 shadow-sm">
         <MapPin className="h-4 w-4 text-blue-400" />
-        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Sucursal:</span>
+        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Branch:</span>
         <select
           value={selectedLocationId}
           onChange={(e) => setSelectedLocationId(e.target.value)}
           className="bg-transparent text-xs font-bold text-white focus:outline-none cursor-pointer"
         >
           <option value="ALL" className="bg-slate-900 text-white">
-            Todas las Sucursales Autorizadas ({locations.length})
+            All Authorized Branches ({locations.length})
           </option>
           {locations.map((loc) => (
             <option key={loc.id} value={loc.id} className="bg-slate-900 text-white">

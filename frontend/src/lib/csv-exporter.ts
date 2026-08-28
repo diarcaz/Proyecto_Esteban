@@ -2,7 +2,7 @@ import { PunchMock } from './mock-data';
 
 export function exportPunchesToCsv(punches: PunchMock[], filename: string = 'time_punches_payroll_report.csv') {
   if (!punches || punches.length === 0) {
-    alert('No hay registros de fichajes disponibles para exportar.');
+    alert('No time punch records available to export.');
     return;
   }
 

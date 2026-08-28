@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/use-auth-store';
 import { useLocationStore, isLocationMatching } from '@/store/use-location-store';
 import { staffApi } from '@/lib/api-client';
+import { MOCK_EMPLOYEES } from '@/lib/mock-data';
 import {
   LayoutDashboard,
   Clock,

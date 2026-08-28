@@ -27,7 +27,7 @@ export function ShiftActivityTimeline() {
 
       {activePunches.length === 0 ? (
         <div className="p-6 text-center text-slate-500 font-medium text-xs">
-          No hay actividad de marcaje activa registrada hoy en esta sucursal.
+          No active punch activity recorded today for this branch.
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">

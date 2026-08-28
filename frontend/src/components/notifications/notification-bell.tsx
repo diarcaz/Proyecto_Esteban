@@ -93,7 +93,7 @@ export function NotificationBell() {
 
           <div className="max-h-80 overflow-y-auto divide-y divide-slate-800/60 p-2">
             {alerts.length === 0 ? (
-              <div className="p-6 text-center text-slate-500 font-medium">No hay alertas registradas.</div>
+              <div className="p-6 text-center text-slate-500 font-medium">No active alerts recorded.</div>
             ) : (
               alerts.map((item) => (
                 <div

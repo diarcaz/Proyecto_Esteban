@@ -24,10 +24,10 @@ export default function AdminLoginPage() {
       if (success) {
         router.push('/admin');
       } else {
-        setError('Credenciales de acceso inválidas. Verifique su correo y contraseña.');
+        setError('Invalid access credentials. Please verify your email and password.');
       }
     } catch (err) {
-      setError('Ocurrió un error al intentar iniciar sesión.');
+      setError('An error occurred while attempting to log in.');
     } finally {
       setLoading(false);
     }
@@ -47,10 +47,10 @@ export default function AdminLoginPage() {
             <Building2 className="h-9 w-9" />
           </div>
           <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
-            NexuStaff <span className="text-xs font-extrabold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">PORTAL ADMIN</span>
+            NexuStaff <span className="text-xs font-extrabold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">ADMIN PORTAL</span>
           </h1>
           <p className="text-xs text-slate-400 font-medium">
-            Plataforma Enterprise de Gestión de Personal y Asistencia
+            Enterprise Staffing Management &amp; Attendance Platform
           </p>
         </div>
 
@@ -65,7 +65,7 @@ export default function AdminLoginPage() {
         {/* Credentials Form */}
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
           <div className="space-y-1.5">
-            <label className="block text-slate-300 font-extrabold uppercase tracking-wider text-[10px]">Correo Electrónico</label>
+            <label className="block text-slate-300 font-extrabold uppercase tracking-wider text-[10px]">Email Address</label>
             <div className="relative">
               <Mail className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
               <input
@@ -73,14 +73,14 @@ export default function AdminLoginPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="usuario@nexustaff.com"
+                placeholder="user@nexustaff.com"
                 className="w-full rounded-2xl border border-slate-800 bg-slate-950 pl-10 pr-4 py-3 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-slate-300 font-extrabold uppercase tracking-wider text-[10px]">Contraseña</label>
+            <label className="block text-slate-300 font-extrabold uppercase tracking-wider text-[10px]">Password</label>
             <div className="relative">
               <Lock className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
               <input
@@ -100,10 +100,10 @@ export default function AdminLoginPage() {
             className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs tracking-wider uppercase shadow-xl connecteam-glow-blue transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2 border border-blue-400/30"
           >
             {loading ? (
-              <span>Autenticando...</span>
+              <span>Authenticating...</span>
             ) : (
               <>
-                <span>Iniciar Sesión</span>
+                <span>Sign In</span>
                 <ArrowRight className="h-4 w-4" />
               </>
             )}

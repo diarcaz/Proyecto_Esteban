@@ -60,16 +60,16 @@ export function PunchesTable() {
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="bg-slate-950 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-800">
               <tr>
-                <th className="px-4 py-3.5">Trabajador</th>
+                <th className="px-4 py-3.5">Staff Member</th>
                 <th className="px-4 py-3.5">Emp #</th>
-                <th className="px-4 py-3.5">Puesto (JC_POS)</th>
-                <th className="px-4 py-3.5">Sucursal (JC_LOC)</th>
+                <th className="px-4 py-3.5">Position Code (JC_POS)</th>
+                <th className="px-4 py-3.5">Branch Location (JC_LOC)</th>
                 <th className="px-4 py-3.5">Sched In vs Actual In</th>
                 <th className="px-4 py-3.5">Sched Out vs Actual Out</th>
-                <th className="px-4 py-3.5 text-center">Horario Receso / Almuerzo</th>
+                <th className="px-4 py-3.5 text-center">Break / Lunch Period</th>
                 <th className="px-4 py-3.5 text-right">Net Hours</th>
                 <th className="px-4 py-3.5 text-center">NexuStaff Status</th>
-                <th className="px-4 py-3.5 text-center">Detalle</th>
+                <th className="px-4 py-3.5 text-center">Details</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">

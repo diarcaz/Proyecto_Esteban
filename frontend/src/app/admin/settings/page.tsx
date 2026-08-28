@@ -85,12 +85,12 @@ export default function SettingsPage() {
         <div className="h-16 w-16 rounded-3xl bg-rose-500/10 text-rose-400 flex items-center justify-center border border-rose-500/20 shadow-xl">
           <ShieldAlert className="h-8 w-8" />
         </div>
-        <h2 className="text-xl font-black text-white">Acceso Restringido - Exclusivo SuperAdmin</h2>
+        <h2 className="text-xl font-black text-white">Restricted Access - SuperAdmin Only</h2>
         <p className="text-xs text-slate-400 max-w-md">
-          El módulo de Configuración de Sistema y Auditorías de Seguridad está reservado únicamente para Administradores Generales.
+          The System Configuration &amp; Security Audit module is restricted to General Administrators only.
         </p>
         <Link href="/admin" className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white transition-all shadow-md">
-          Volver al Panel Principal
+          Return to Main Overview
         </Link>
       </div>
     );
@@ -105,7 +105,7 @@ export default function SettingsPage() {
           const mapped: MockAuditLog[] = res.data.map((item: any) => ({
             id: item.id,
             timestamp: new Date(item.createdAt).toLocaleString(),
-            actorName: item.user ? `${item.user.firstName} ${item.user.lastName}` : 'Sistema',
+            actorName: item.user ? `${item.user.firstName} ${item.user.lastName}` : 'System',
             actorRole: item.user?.role || 'SYSTEM',
             action: item.action || 'PUNCH_EDIT',
             targetEntity: item.targetEntity || 'System',
@@ -139,16 +139,16 @@ export default function SettingsPage() {
       {/* Header */}
       <div>
         <h2 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
-          Configuración &amp; Auditoría de Seguridad <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">Super Admin</span>
+          System Settings &amp; Security Audit <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">Super Admin</span>
         </h2>
         <p className="text-xs text-slate-400 font-medium">
-          Parámetros globales del sistema, Rate Limiting contra ciberataques DDoS y Visualizador de Logs de Auditoría.
+          Global system parameters, backend DDoS Rate Limiting, and Security Audit Log Visualizer.
         </p>
       </div>
 
       {saved && (
         <div className="p-4 rounded-2xl bg-emerald-600/90 text-white flex items-center gap-3 shadow-lg animate-bounce border border-emerald-400 text-xs font-bold">
-          <ShieldCheck className="h-5 w-5" /> Configuración guardada correctamente.
+          <ShieldCheck className="h-5 w-5" /> Settings saved successfully.
         </div>
       )}
 
@@ -157,25 +157,25 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2.5">
             <Server className="h-5 w-5 text-emerald-400" />
-            <h3 className="text-base font-extrabold">Rate Limiting Backend (@nestjs/throttler)</h3>
+            <h3 className="text-base font-extrabold">Backend Rate Limiting (@nestjs/throttler)</h3>
           </div>
           <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-mono text-xs font-bold border border-emerald-500/30">
-            PROTECCIÓN ACTIVA (100 req/min por IP)
+            ACTIVE PROTECTION (100 req/min per IP)
           </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
           <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1">
-            <span className="text-[10px] text-slate-400 font-bold uppercase">Límite por Ventana</span>
-            <p className="text-sm font-black text-white font-mono">100 peticiones / 60 segundos</p>
+            <span className="text-[10px] text-slate-400 font-bold uppercase">Window Limit</span>
+            <p className="text-sm font-black text-white font-mono">100 requests / 60 seconds</p>
           </div>
           <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1">
-            <span className="text-[10px] text-slate-400 font-bold uppercase">Módulo Guardián</span>
-            <p className="text-sm font-black text-emerald-400 font-mono">ThrottlerGuard Activo</p>
+            <span className="text-[10px] text-slate-400 font-bold uppercase">Guardian Module</span>
+            <p className="text-sm font-black text-emerald-400 font-mono">ThrottlerGuard Active</p>
           </div>
           <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-1">
-            <span className="text-[10px] text-slate-400 font-bold uppercase">Estado Anti-DDoS</span>
-            <p className="text-sm font-black text-blue-400 font-mono">Protegido contra Inundación</p>
+            <span className="text-[10px] text-slate-400 font-bold uppercase">Anti-DDoS Status</span>
+            <p className="text-sm font-black text-blue-400 font-mono font-bold">Protected against floods</p>
           </div>
         </div>
       </div>
@@ -186,8 +186,8 @@ export default function SettingsPage() {
           <div className="flex items-center gap-2.5">
             <FileText className="h-5 w-5 text-blue-400" />
             <div>
-              <h3 className="text-base font-extrabold">Visualizador de Logs de Auditoría (Audit Trail)</h3>
-              <p className="text-xs text-slate-400">Auditoría completa de quién modificó horas, editó empleados o direcciones IP asociadas.</p>
+              <h3 className="text-base font-extrabold">Audit Trail Log Visualizer</h3>
+              <p className="text-xs text-slate-400">Comprehensive audit tracking of time edits, staff updates, and IP addresses.</p>
             </div>
           </div>
 
@@ -197,7 +197,7 @@ export default function SettingsPage() {
               <Search className="h-4 w-4 text-slate-400 absolute left-3 top-2.5" />
               <input
                 type="text"
-                placeholder="Buscar por IP o usuario..."
+                placeholder="Search by IP or user..."
                 value={searchIp}
                 onChange={(e) => setSearchIp(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500"
@@ -210,11 +210,11 @@ export default function SettingsPage() {
               onChange={(e) => setActionFilter(e.target.value)}
               className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white"
             >
-              <option value="ALL">Todas las Acciones</option>
-              <option value="PUNCH_EDIT">Edición de Fichaje</option>
-              <option value="EMPLOYEE_UPDATE">Edición de Empleado</option>
-              <option value="KIOSK_LOCKOUT">Bloqueo Quiosco</option>
-              <option value="SHIFT_CHANGE">Cambio de Horario</option>
+              <option value="ALL">All Actions</option>
+              <option value="PUNCH_EDIT">Punch Edit</option>
+              <option value="EMPLOYEE_UPDATE">Staff Update</option>
+              <option value="KIOSK_LOCKOUT">Kiosk Lockout</option>
+              <option value="SHIFT_CHANGE">Shift Schedule Change</option>
             </select>
           </div>
         </div>
@@ -226,11 +226,11 @@ export default function SettingsPage() {
               <thead className="bg-slate-900 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-800">
                 <tr>
                   <th className="px-4 py-3.5">TIMESTAMP</th>
-                  <th className="px-4 py-3.5">USUARIO / ACTOR</th>
-                  <th className="px-4 py-3.5">ACCIÓN</th>
-                  <th className="px-4 py-3.5">DIRECCIÓN IP</th>
-                  <th className="px-4 py-3.5">ENTIDAD OBJETIVO</th>
-                  <th className="px-4 py-3.5 text-center">DETALLES</th>
+                  <th className="px-4 py-3.5">USER / ACTOR</th>
+                  <th className="px-4 py-3.5">ACTION</th>
+                  <th className="px-4 py-3.5">IP ADDRESS</th>
+                  <th className="px-4 py-3.5">TARGET ENTITY</th>
+                  <th className="px-4 py-3.5 text-center font-bold">DETAILS</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 font-mono">
@@ -241,22 +241,22 @@ export default function SettingsPage() {
                     <td className="px-4 py-3">
                       {log.action === 'PUNCH_EDIT' && (
                         <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-extrabold">
-                          EDICIÓN FICHAJE
+                          PUNCH EDIT
                         </span>
                       )}
                       {log.action === 'KIOSK_LOCKOUT' && (
                         <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[10px] font-extrabold">
-                          BLOQUEO QUIOSCO
+                          KIOSK LOCKOUT
                         </span>
                       )}
                       {log.action === 'EMPLOYEE_UPDATE' && (
                         <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[10px] font-extrabold">
-                          EDITAR EMPLEADO
+                          STAFF EDIT
                         </span>
                       )}
                       {log.action === 'SHIFT_CHANGE' && (
                         <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] font-extrabold">
-                          CAMBIO HORARIO
+                          SHIFT CHANGE
                         </span>
                       )}
                     </td>
@@ -266,7 +266,7 @@ export default function SettingsPage() {
                       <button
                         onClick={() => setSelectedDetailLog(log)}
                         className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-blue-400 hover:text-white transition-colors border border-slate-800 cursor-pointer"
-                        title="Ver detalles completos del log"
+                        title="View full log details"
                       >
                         <Eye className="h-4 w-4" />
                       </button>
@@ -284,12 +284,12 @@ export default function SettingsPage() {
         <div className="connecteam-glass-card rounded-3xl p-6 border border-slate-800 space-y-4 text-white">
           <div className="flex items-center gap-2.5 border-b border-slate-800 pb-3">
             <Clock className="h-5 w-5 text-blue-400" />
-            <h3 className="text-base font-extrabold">Reglas de Horas Extra &amp; Tolerancia</h3>
+            <h3 className="text-base font-extrabold">Overtime Rules &amp; Grace Period Thresholds</h3>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
             <div>
-              <label className="block text-slate-400 font-bold mb-1">Umbral Diario de Horas Extra (hrs)</label>
+              <label className="block text-slate-400 font-bold mb-1">Daily Overtime Threshold (hrs)</label>
               <input
                 type="text"
                 value={overtimeThreshold}
@@ -299,7 +299,7 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <label className="block text-slate-400 font-bold mb-1">Tolerancia de Retardo (minutos)</label>
+              <label className="block text-slate-400 font-bold mb-1">Late Punch Grace Period (minutes)</label>
               <input
                 type="text"
                 value={gracePeriod}
@@ -309,7 +309,7 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <label className="block text-slate-400 font-bold mb-1">Duración Estándar Descanso (min)</label>
+              <label className="block text-slate-400 font-bold mb-1">Standard Meal Break Duration (min)</label>
               <input
                 type="text"
                 value={lunchDuration}
@@ -325,7 +325,7 @@ export default function SettingsPage() {
             type="submit"
             className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-xl transition-all active:scale-95 cursor-pointer"
           >
-            <Save className="h-4 w-4" /> Guardar Ajustes del Sistema
+            <Save className="h-4 w-4" /> Save System Settings
           </button>
         </div>
       </form>
@@ -336,7 +336,7 @@ export default function SettingsPage() {
           <div className="w-full max-w-lg connecteam-glass-card rounded-3xl p-6 shadow-2xl border border-slate-700 space-y-4 text-white">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-black flex items-center gap-2">
-                <FileText className="h-5 w-5 text-blue-400" /> Detalle Completo de Log de Auditoría
+                <FileText className="h-5 w-5 text-blue-400" /> Full Audit Log Details
               </h3>
               <button onClick={() => setSelectedDetailLog(null)} className="text-slate-400 hover:text-white cursor-pointer">
                 ✕
@@ -350,24 +350,24 @@ export default function SettingsPage() {
                   <p className="font-mono text-white">{selectedDetailLog.timestamp}</p>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-500 font-bold uppercase">Dirección IP:</span>
+                  <span className="text-[10px] text-slate-500 font-bold uppercase">IP Address:</span>
                   <p className="font-mono text-emerald-400">{selectedDetailLog.ipAddress}</p>
                 </div>
               </div>
 
               <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
-                <span className="text-[10px] text-slate-500 font-bold uppercase">Actor / Usuario Ejecutor:</span>
+                <span className="text-[10px] text-slate-500 font-bold uppercase">Actor / Executing User:</span>
                 <p className="font-bold text-white">{selectedDetailLog.actorName}</p>
-                <p className="text-[10px] text-blue-400 font-mono">Rol: {selectedDetailLog.actorRole}</p>
+                <p className="text-[10px] text-blue-400 font-mono">Role: {selectedDetailLog.actorRole}</p>
               </div>
 
               <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
-                <span className="text-[10px] text-slate-500 font-bold uppercase">Agente del Navegador (User Agent):</span>
+                <span className="text-[10px] text-slate-500 font-bold uppercase">User Agent:</span>
                 <p className="font-mono text-[11px] text-slate-300 break-all">{selectedDetailLog.userAgent}</p>
               </div>
 
               <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-1">
-                <span className="text-[10px] text-amber-400 font-bold uppercase">Detalles de la Acción Realizada:</span>
+                <span className="text-[10px] text-amber-400 font-bold uppercase">Action Details:</span>
                 <p className="text-slate-200 leading-relaxed font-mono">{selectedDetailLog.details}</p>
               </div>
             </div>
@@ -377,7 +377,7 @@ export default function SettingsPage() {
                 onClick={() => setSelectedDetailLog(null)}
                 className="px-4 py-2 rounded-xl bg-slate-800 text-white font-bold cursor-pointer"
               >
-                Cerrar
+                Close
               </button>
             </div>
           </div>

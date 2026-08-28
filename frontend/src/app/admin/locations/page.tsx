@@ -74,12 +74,12 @@ export default function LocationsPage() {
         <div className="h-16 w-16 rounded-3xl bg-rose-500/10 text-rose-400 flex items-center justify-center border border-rose-500/20 shadow-xl">
           <ShieldAlert className="h-8 w-8" />
         </div>
-        <h2 className="text-xl font-black text-white">Acceso Restringido - Exclusivo SuperAdmin</h2>
+        <h2 className="text-xl font-black text-white">Restricted Access - SuperAdmin Only</h2>
         <p className="text-xs text-slate-400 max-w-md">
-          El módulo de Gestión Global de Sucursales sólo está disponible para Administradores Generales. Los Administradores de Sucursal sólo operan sobre su sede asignada.
+          The Global Branch Management module is available to General Administrators only. Branch Administrators operate exclusively within their assigned location.
         </p>
         <Link href="/admin" className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white transition-all shadow-md">
-          Volver al Panel Principal
+          Return to Main Overview
         </Link>
       </div>
     );
@@ -276,7 +276,7 @@ export default function LocationsPage() {
             <form onSubmit={editingLoc ? handleUpdateLocation : handleCreateLocation} className="space-y-3 text-xs">
               <div>
                 <label className="block text-slate-400 font-bold mb-1">Branch Name</label>
-                <input type="text" required placeholder="e.g. Sucursal Centro - MÉRIDA" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white" />
+                <input type="text" required placeholder="e.g. Downtown Branch - MERIDA" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white" />
               </div>
               <div>
                 <label className="block text-slate-400 font-bold mb-1">Address</label>
