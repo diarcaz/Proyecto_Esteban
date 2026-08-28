@@ -69,14 +69,14 @@ export function calculatePayrollBreakdown(punches: PunchRecordForPayroll[]): Emp
     const first = userPunches[0];
 
     for (const punch of userPunches) {
-      const totalHrs = punch.calculatedHours !== undefined ? punch.calculatedHours : 8.0;
+      const totalHrs = punch.calculatedHours !== undefined && punch.calculatedHours !== null ? punch.calculatedHours : 0;
       netWorkedHours += totalHrs;
 
       // Check if punch falls on a statutory holiday
       if (punch.isHoliday) {
         holidayHours += totalHrs;
       } else if (punch.isOvertime || totalHrs > 8.0) {
-        regHours += 8.0;
+        regHours += Math.min(8.0, totalHrs);
         totalOtHours += Math.max(0, totalHrs - 8.0);
       } else {
         regHours += totalHrs;

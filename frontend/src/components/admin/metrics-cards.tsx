@@ -17,6 +17,9 @@ export function MetricsCards() {
         const list = await staffApi.list();
         if (Array.isArray(list)) {
           const filtered = list.filter((item: any) =>
+            item.role !== 'SUPER_ADMIN' &&
+            item.jobPositionCode !== 'SUPER_ADMIN' &&
+            !item.employeeNumber?.startsWith('ADM-') &&
             isLocationMatching(item.assignments?.[0]?.locationId || item.locationId, item.assignments?.[0]?.location?.locationCode || item.locationCode, selectedLocationId)
           );
           setTotalStaff(filtered.length);

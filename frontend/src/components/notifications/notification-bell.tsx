@@ -15,32 +15,7 @@ export interface AlertItem {
 
 export function NotificationBell() {
   const [isOpen, setIsOpen] = useState(false);
-  const [alerts, setAlerts] = useState<AlertItem[]>([
-    {
-      id: 'alert-1',
-      type: 'LATE',
-      title: '🚨 Empleado Llegó Tarde',
-      message: 'John Doe marcó entrada con 25 minutos de retardo en Sucursal Centro MID-1001.',
-      time: 'Hace 5 min',
-      read: false,
-    },
-    {
-      id: 'alert-2',
-      type: 'OVERTIME',
-      title: '⚠️ Alerta de Horas Extra',
-      message: 'María González ha superado las 8.0 horas reglamentarias diarias. Notificado supervisor.',
-      time: 'Hace 18 min',
-      read: false,
-    },
-    {
-      id: 'alert-3',
-      type: 'ANTI_TAMPER',
-      title: '🔒 Bloqueo Quiosco Activado',
-      message: 'Se activó bloqueo por 3 intentos fallidos de PIN en Quiosco Tablet #2.',
-      time: 'Hace 1 hora',
-      read: true,
-    },
-  ]);
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
 
   const unreadCount = alerts.filter((a) => !a.read).length;
 

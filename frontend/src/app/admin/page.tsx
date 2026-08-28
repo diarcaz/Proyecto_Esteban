@@ -1,9 +1,24 @@
-import React from 'react';
+'use client';
+
+import React, { useEffect } from 'react';
 import { MetricsCards } from '@/components/admin/metrics-cards';
 import { ShiftActivityTimeline } from '@/components/admin/shift-activity-timeline';
 import { PunchesTable } from '@/components/punches/punches-table';
+import { usePunchStore } from '@/store/use-punch-store';
+import { useLocationStore } from '@/store/use-location-store';
 
 export default function AdminOverviewPage() {
+  const { fetchPunches } = usePunchStore();
+  const { selectedLocationId } = useLocationStore();
+
+  useEffect(() => {
+    fetchPunches(selectedLocationId);
+    const timer = setInterval(() => {
+      fetchPunches(selectedLocationId);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [fetchPunches, selectedLocationId]);
+
   return (
     <div className="space-y-6 font-sans">
       <div>

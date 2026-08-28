@@ -39,6 +39,15 @@ const saveStoredLivePunches = (punches: PunchMock[]) => {
   }
 };
 
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key === 'nexustaff_live_punches') {
+      const updated = getStoredLivePunches();
+      usePunchStore.setState({ punches: updated });
+    }
+  });
+}
+
 export const usePunchStore = create<PunchStoreState>((set, get) => ({
   punches: getStoredLivePunches(),
   isLoading: false,

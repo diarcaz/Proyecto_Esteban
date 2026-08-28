@@ -47,16 +47,21 @@ export function Sidebar() {
       try {
         const list = await staffApi.list();
         if (Array.isArray(list)) {
-          if (!isSuperAdmin) {
-            const filtered = list.filter((item: any) =>
-              isLocationMatching(item.assignments?.[0]?.locationId || item.locationId, item.assignments?.[0]?.location?.locationCode || item.locationCode, selectedLocationId)
-            );
-            setStaffCount(filtered.length);
-          } else {
-            setStaffCount(list.length);
-          }
+          const filtered = list.filter((item: any) => {
+            if (item.role === 'SUPER_ADMIN' || item.jobPositionCode === 'SUPER_ADMIN' || item.employeeNumber?.startsWith('ADM-')) {
+              return false;
+            }
+            if (!isSuperAdmin) {
+              return isLocationMatching(item.assignments?.[0]?.locationId || item.locationId, item.assignments?.[0]?.location?.locationCode || item.locationCode, selectedLocationId);
+            }
+            return true;
+          });
+          setStaffCount(filtered.length);
+          return;
         }
       } catch (e) {}
+      const mockFiltered = MOCK_EMPLOYEES.filter(emp => emp.jobPositionCode !== 'SUPER_ADMIN' && !emp.employeeNumber?.startsWith('ADM-'));
+      setStaffCount(mockFiltered.length);
     }
     getStaffCount();
   }, [user, selectedLocationId, isSuperAdmin]);

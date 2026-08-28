@@ -219,9 +219,17 @@ export default function SchedulesPage() {
   const assignShiftToEmpDay = async (empId: string, day: string, time: string) => {
     if (checkOverlap(empId, day, time)) return;
 
+    const emp = employees.find((e) => e.id === empId || e.employeeNumber === empId);
+    const empKey = emp?.id || empId;
+    const empNumKey = emp?.employeeNumber;
+
     const updated = { ...shiftData };
-    if (!updated[empId]) updated[empId] = {};
-    updated[empId][day] = time;
+    if (!updated[empKey]) updated[empKey] = {};
+    updated[empKey][day] = time;
+    if (empNumKey) {
+      if (!updated[empNumKey]) updated[empNumKey] = {};
+      updated[empNumKey][day] = time;
+    }
     saveShiftDataState(updated);
     setOverlapWarning(null);
 
@@ -230,7 +238,7 @@ export default function SchedulesPage() {
       const { schedulesApi } = await import('@/lib/api-client');
       const now = new Date();
       await schedulesApi.create({
-        userId: empId,
+        userId: empKey,
         locationId: selectedLocationId === 'ALL' ? 'loc-mid' : selectedLocationId,
         scheduledIn: now.toISOString(),
         scheduledOut: new Date(now.getTime() + 8.5 * 3600000).toISOString(),
@@ -440,7 +448,7 @@ export default function SchedulesPage() {
 
                     {/* Schedule Day Drop / Click Cells */}
                     {DAYS.map((day) => {
-                      const shift = shiftData[emp.id]?.[day];
+                      const shift = shiftData[emp.id]?.[day] || shiftData[emp.employeeNumber]?.[day];
                       return (
                         <td
                           key={day}
