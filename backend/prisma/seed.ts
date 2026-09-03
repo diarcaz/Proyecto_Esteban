@@ -75,7 +75,6 @@ async function main() {
       role: 'SUPER_ADMIN',
       jobPositionCode: 'SUPER_ADMIN',
       hourlyRate: 50.0,
-      pinCode: '999999',
       pinCodeHash: await bcrypt.hash('999999', 10),
       preferredLanguage: 'es',
       status: 'ACTIVE',
@@ -102,7 +101,7 @@ async function main() {
       role: 'LOCATION_ADMIN' as const,
       jobPositionCode: 'SUPERVISOR',
       hourlyRate: 18.5,
-      pinCode: '100100',
+      rawPinCode: '100100',
       preferredLanguage: 'es',
       status: 'ACTIVE' as const,
       locationId: locMerida.id,
@@ -116,7 +115,7 @@ async function main() {
       role: 'WORKER' as const,
       jobPositionCode: 'RECEPT',
       hourlyRate: 14.0,
-      pinCode: '100200',
+      rawPinCode: '100200',
       preferredLanguage: 'es',
       status: 'ACTIVE' as const,
       locationId: locMerida.id,
@@ -130,7 +129,7 @@ async function main() {
       role: 'WORKER' as const,
       jobPositionCode: 'IT_SPEC',
       hourlyRate: 25.0,
-      pinCode: '100300',
+      rawPinCode: '100300',
       preferredLanguage: 'en',
       status: 'ACTIVE' as const,
       locationId: locCancun.id,
@@ -144,7 +143,7 @@ async function main() {
       role: 'WORKER' as const,
       jobPositionCode: 'OP_MNT',
       hourlyRate: 15.5,
-      pinCode: '100400',
+      rawPinCode: '100400',
       preferredLanguage: 'es',
       status: 'ACTIVE' as const,
       locationId: locCancun.id,
@@ -158,7 +157,7 @@ async function main() {
       role: 'LOCATION_ADMIN' as const,
       jobPositionCode: 'SUPERVISOR',
       hourlyRate: 20.0,
-      pinCode: '100500',
+      rawPinCode: '100500',
       preferredLanguage: 'en',
       status: 'ACTIVE' as const,
       locationId: locMonterrey.id,
@@ -172,7 +171,7 @@ async function main() {
       role: 'WORKER' as const,
       jobPositionCode: 'CAJERO',
       hourlyRate: 13.5,
-      pinCode: '100600',
+      rawPinCode: '100600',
       preferredLanguage: 'es',
       status: 'ACTIVE' as const,
       locationId: locMonterrey.id,
@@ -186,7 +185,7 @@ async function main() {
       role: 'WORKER' as const,
       jobPositionCode: 'LOGISTICA',
       hourlyRate: 16.0,
-      pinCode: '100700',
+      rawPinCode: '100700',
       preferredLanguage: 'es',
       status: 'ACTIVE' as const,
       locationId: locMerida.id,
@@ -200,7 +199,7 @@ async function main() {
       role: 'WORKER' as const,
       jobPositionCode: 'EVENTOS',
       hourlyRate: 17.0,
-      pinCode: '100800',
+      rawPinCode: '100800',
       preferredLanguage: 'en',
       status: 'ACTIVE' as const,
       locationId: locCancun.id,
@@ -211,8 +210,8 @@ async function main() {
 
   for (const empData of employeesData) {
     const locId = empData.locationId;
-    const { locationId, ...userData } = empData;
-    const pinCodeHash = await bcrypt.hash(userData.pinCode, 10);
+    const { locationId, rawPinCode, ...userData } = empData;
+    const pinCodeHash = await bcrypt.hash(rawPinCode, 10);
 
     const user = await prisma.user.create({
       data: {

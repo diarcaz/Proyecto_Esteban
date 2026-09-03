@@ -1,12 +1,16 @@
 import { Injectable, BadRequestException, UnauthorizedException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@infrastructure/persistence/prisma/prisma.service';
+import { RedisService } from '@infrastructure/cache/redis.service';
 import { StandardClockDto, KioskClockDto, PunchQueryDto } from '@adapters/dtos/attendance.dtos';
 import { AttendanceType, AttendanceStatus, AttendanceMethod } from '@domain/entities/attendance-log.entity';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AttendanceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redisService: RedisService,
+  ) {}
 
   async processStandardClock(userId: string, dto: StandardClockDto) {
     const timestamp = new Date();
@@ -20,26 +24,39 @@ export class AttendanceService {
         where: { employeeNumber: dto.employee_number },
       });
     }
+
     if (!user && dto.pin_code) {
-      user = await this.prisma.user.findFirst({
-        where: { pinCode: dto.pin_code },
+      const candidates = await this.prisma.user.findMany({
+        where: { status: 'ACTIVE', pinCodeHash: { not: null } },
       });
+      for (const candidate of candidates) {
+        if (candidate.pinCodeHash && (await bcrypt.compare(dto.pin_code, candidate.pinCodeHash))) {
+          user = candidate;
+          break;
+        }
+      }
+    }
+
+    const lockKey = user ? `kiosk_pin:${user.id}` : `kiosk_pin:${dto.employee_number || 'unknown'}`;
+    const failedAttempts = await this.redisService.getFailedAttempts(lockKey);
+    if (failedAttempts >= 5) {
+      throw new UnauthorizedException('Account temporarily locked due to multiple failed PIN attempts. Please wait 15 minutes or contact administrator.');
     }
 
     if (!user || user.status !== 'ACTIVE') {
+      await this.redisService.incrementFailedAttempts(lockKey, 900);
       throw new UnauthorizedException('Invalid employee PIN or inactive user.');
     }
 
-    let isPinValid = false;
-    if (user.pinCode && user.pinCode === dto.pin_code) {
-      isPinValid = true;
-    } else if (user.pinCodeHash) {
-      isPinValid = await bcrypt.compare(dto.pin_code, user.pinCodeHash);
-    }
-
-    if (!isPinValid) {
+    if (!user.pinCodeHash || !(await bcrypt.compare(dto.pin_code, user.pinCodeHash))) {
+      const attempts = await this.redisService.incrementFailedAttempts(lockKey, 900);
+      if (attempts >= 5) {
+        throw new UnauthorizedException('Too many failed PIN attempts. Account temporarily locked for 15 minutes.');
+      }
       throw new UnauthorizedException('Invalid PIN code.');
     }
+
+    await this.redisService.resetFailedAttempts(lockKey);
 
     const location = await this.prisma.location.findFirst({
       where: { locationCode: dto.location_code },
@@ -128,17 +145,16 @@ export class AttendanceService {
 
     this.validateStateTransition(latestLog?.punchType as AttendanceType | null, type);
 
-    const startOfDay = new Date(timestamp);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(timestamp);
-    endOfDay.setHours(23, 59, 59, 999);
+    const searchWindowStart = new Date(timestamp.getTime() - 24 * 60 * 60 * 1000);
+    const searchWindowEnd = new Date(timestamp.getTime() + 12 * 60 * 60 * 1000);
 
     const activeSchedule = await this.prisma.shiftSchedule.findFirst({
       where: {
         userId,
-        scheduledIn: { gte: startOfDay, lte: endOfDay },
+        scheduledIn: { gte: searchWindowStart, lte: searchWindowEnd },
       },
       include: { shift: true },
+      orderBy: { scheduledIn: 'desc' },
     });
 
     let punchStatus: AttendanceStatus = AttendanceStatus.ON_TIME;
@@ -164,20 +180,28 @@ export class AttendanceService {
     let isOvertime = false;
 
     if (type === AttendanceType.CLOCK_OUT) {
-      const currentCycleLogs = await this.prisma.attendanceLog.findMany({
+      const latestClockIn = await this.prisma.attendanceLog.findFirst({
         where: {
           userId,
-          timestamp: { gte: startOfDay, lte: timestamp },
+          punchType: AttendanceType.CLOCK_IN as any,
+          timestamp: { lte: timestamp },
         },
-        orderBy: { timestamp: 'asc' },
+        orderBy: { timestamp: 'desc' },
       });
 
-      const clockIn = currentCycleLogs.find((l) => l.punchType === AttendanceType.CLOCK_IN);
-      const lunchStart = currentCycleLogs.find((l) => l.punchType === AttendanceType.LUNCH_START);
-      const lunchEnd = currentCycleLogs.find((l) => l.punchType === AttendanceType.LUNCH_END);
+      if (latestClockIn) {
+        const currentCycleLogs = await this.prisma.attendanceLog.findMany({
+          where: {
+            userId,
+            timestamp: { gte: latestClockIn.timestamp, lte: timestamp },
+          },
+          orderBy: { timestamp: 'asc' },
+        });
 
-      if (clockIn) {
-        const grossMs = timestamp.getTime() - clockIn.timestamp.getTime();
+        const lunchStart = currentCycleLogs.find((l) => l.punchType === AttendanceType.LUNCH_START);
+        const lunchEnd = currentCycleLogs.find((l) => l.punchType === AttendanceType.LUNCH_END);
+
+        const grossMs = timestamp.getTime() - latestClockIn.timestamp.getTime();
         let lunchMs = 0;
 
         if (lunchStart && lunchEnd) {
@@ -260,5 +284,79 @@ export class AttendanceService {
       }
       return;
     }
+  }
+
+  async adjustPunchTime(id: string, dto: { actualIn?: string; actualOut?: string }, actorId: string, ipAddress?: string) {
+    const log = await this.prisma.attendanceLog.findUnique({ where: { id } });
+    if (!log) {
+      throw new NotFoundException(`Attendance log ${id} not found.`);
+    }
+
+    const newTimestamp = dto.actualIn ? new Date(dto.actualIn) : dto.actualOut ? new Date(dto.actualOut) : log.timestamp;
+
+    const updated = await this.prisma.attendanceLog.update({
+      where: { id },
+      data: {
+        timestamp: newTimestamp,
+        punchMethod: AttendanceMethod.MANUAL_OVERRIDE,
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: 'ADJUST_ATTENDANCE_PUNCH',
+        targetEntity: 'AttendanceLog',
+        ipAddress: ipAddress || null,
+        details: {
+          logId: id,
+          previousTimestamp: log.timestamp,
+          newTimestamp: updated.timestamp,
+          changes: dto,
+        },
+      },
+    });
+
+    return {
+      statusCode: 200,
+      message: `Attendance punch ${id} updated successfully.`,
+      data: updated,
+    };
+  }
+
+  async approveOvertime(id: string, actorId: string, ipAddress?: string) {
+    const log = await this.prisma.attendanceLog.findUnique({ where: { id } });
+    if (!log) {
+      throw new NotFoundException(`Attendance log ${id} not found.`);
+    }
+
+    const updated = await this.prisma.attendanceLog.update({
+      where: { id },
+      data: {
+        isOvertime: true,
+        isOvertimeApproved: true,
+        status: AttendanceStatus.OVERTIME,
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId,
+        action: 'APPROVE_OVERTIME',
+        targetEntity: 'AttendanceLog',
+        ipAddress: ipAddress || null,
+        details: {
+          logId: id,
+          previousIsOvertimeApproved: log.isOvertimeApproved,
+          newIsOvertimeApproved: true,
+        },
+      },
+    });
+
+    return {
+      statusCode: 200,
+      message: `Overtime for punch ${id} approved successfully.`,
+      data: updated,
+    };
   }
 }

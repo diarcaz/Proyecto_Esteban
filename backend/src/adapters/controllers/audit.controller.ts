@@ -1,7 +1,5 @@
-import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { AuditService } from '@application/services/audit.service';
-import { AuthGuard } from '@nestjs/passport';
-import { RolesAndLocationsGuard } from '@adapters/guards/roles-and-locations.guard';
 import { Roles } from '@adapters/decorators/roles-and-locations.decorator';
 import { UserRole } from '@domain/entities/user.entity';
 
@@ -10,7 +8,6 @@ export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 
   @Get()
-  @UseGuards(AuthGuard('jwt'), RolesAndLocationsGuard)
   @Roles(UserRole.SUPER_ADMIN)
   async getAuditLogs(@Query('ip') ip?: string, @Query('action') action?: string, @Query('limit') limit?: string) {
     const logs = await this.auditService.getAuditLogs({

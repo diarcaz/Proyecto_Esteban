@@ -58,4 +58,31 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       await this.client.del(key);
     } catch {}
   }
+
+  async incrementFailedAttempts(key: string, ttlSeconds: number = 900): Promise<number> {
+    try {
+      const attempts = await this.client.incr(`failed_attempts:${key}`);
+      if (attempts === 1) {
+        await this.client.expire(`failed_attempts:${key}`, ttlSeconds);
+      }
+      return attempts;
+    } catch {
+      return 0;
+    }
+  }
+
+  async getFailedAttempts(key: string): Promise<number> {
+    try {
+      const val = await this.client.get(`failed_attempts:${key}`);
+      return val ? parseInt(val, 10) : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  async resetFailedAttempts(key: string): Promise<void> {
+    try {
+      await this.client.del(`failed_attempts:${key}`);
+    } catch {}
+  }
 }

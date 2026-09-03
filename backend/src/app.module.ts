@@ -18,6 +18,8 @@ import { LocationController } from '@adapters/controllers/location.controller';
 import { AuditController } from '@adapters/controllers/audit.controller';
 import { SchedulesController } from '@adapters/controllers/schedules.controller';
 import { HealthController } from '@adapters/controllers/health.controller';
+import { JwtAuthGuard } from '@adapters/guards/jwt-auth.guard';
+import { RolesAndLocationsGuard } from '@adapters/guards/roles-and-locations.guard';
 import { NotificationsGateway } from '@infrastructure/notifications/notifications.gateway';
 
 @Module({
@@ -55,6 +57,14 @@ import { NotificationsGateway } from '@infrastructure/notifications/notification
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesAndLocationsGuard,
     },
   ],
 })

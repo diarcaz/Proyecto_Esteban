@@ -16,8 +16,15 @@ async function bootstrap() {
   );
 
   // Dynamic CORS Configuration
+  const defaultOrigins = [
+    'https://nexustaff-frontend.onrender.com',
+    'http://localhost:3000',
+  ];
+
   const allowedOrigins = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
+    : process.env.NODE_ENV === 'production'
+    ? defaultOrigins
     : true;
 
   app.enableCors({
@@ -28,20 +35,22 @@ async function bootstrap() {
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
-  const config = new DocumentBuilder()
-    .setTitle('NexuStaff Enterprise — Attendance & Staffing Management API')
-    .setDescription('NexuStaff: Multi-location attendance tracking, double-shift management, and agency RBAC')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
+  if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'true') {
+    const config = new DocumentBuilder()
+      .setTitle('NexuStaff Enterprise — Attendance & Staffing Management API')
+      .setDescription('NexuStaff: Multi-location attendance tracking, double-shift management, and agency RBAC')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
 
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/docs', app, document);
+    logger.log('Swagger API Documentation enabled at /api/docs');
+  }
 
   const port = process.env.PORT || 3001;
   await app.listen(port);
   console.log(`Backend Enterprise Attendance Service running on port ${port}`);
-  console.log(`Swagger Docs available at http://localhost:${port}/api/docs`);
 }
 
 bootstrap();

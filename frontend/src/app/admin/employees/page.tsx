@@ -60,7 +60,7 @@ export default function EmployeesPage() {
           jobPositionCode: item.jobPositionCode || 'STAFF',
           locationId: item.assignments?.[0]?.locationId || item.locationId || 'loc-mid',
           locationCode: item.assignments?.[0]?.location?.locationCode || item.locationCode || 'MID-1001',
-          pinCode: item.pinCode || '',
+          pinCode: item.hasPin ? 'Configurado' : (item.pinCode || ''),
           preferredLanguage: item.preferredLanguage || 'es',
         }));
         setEmployees(mapped);
@@ -303,7 +303,7 @@ export default function EmployeesPage() {
                     </td>
                     <td className="px-4 py-3.5 font-semibold text-slate-300">{emp.locationCode || emp.locationId}</td>
                     <td className="px-4 py-3.5 text-center font-mono font-bold text-emerald-400">
-                      •••••• ({emp.pinCode})
+                      {emp.pinCode ? `•••••• (${emp.pinCode})` : 'Sin PIN'}
                     </td>
                     <td className="px-4 py-3.5 text-center">
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-950 text-slate-300 text-[10px] font-bold border border-slate-800">

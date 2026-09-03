@@ -124,7 +124,6 @@ model User {
   role              UserRole                 @default(WORKER)
   jobPositionCode   String                   @default("STAFF") @map("job_position_code")
   hourlyRate        Decimal                  @default(15.00) @map("hourly_rate") @db.Decimal(10, 2)
-  pinCode           String?                  @unique @map("pin_code")
   pinCodeHash       String?                  @map("pin_code_hash")
   preferredLanguage String                   @default("es") @map("preferred_language")
   departmentId      String?                  @map("department_id")

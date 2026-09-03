@@ -28,8 +28,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const user = await (this.prisma as any).user.findUnique({
       where: { id: payload.sub },
       include: {
-        locationAssignments: {
+        assignments: {
           select: { locationId: true },
+        },
+        department: {
+          include: {
+            location: {
+              select: { companyId: true },
+            },
+          },
         },
       },
     });
@@ -38,12 +45,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Account inactive or user not found');
     }
 
-    const assignedLocationIds = user.locationAssignments.map((a: any) => a.locationId);
+    const assignedLocationIds = (user.assignments || []).map((a: any) => a.locationId);
+    const companyId = user.department?.location?.companyId || null;
 
     return {
       id: user.id,
       email: user.email,
-      companyId: user.companyId,
+      companyId,
       employeeNumber: user.employeeNumber,
       role: user.role,
       status: user.status,

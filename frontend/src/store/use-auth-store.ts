@@ -31,11 +31,11 @@ const getInitialState = () => {
       const rawStore = localStorage.getItem('nexustaff-auth-store');
       if (rawStore) {
         const parsed = JSON.parse(rawStore);
-        if (parsed?.state?.isAuthenticated && parsed?.state?.user) {
+        if (parsed?.state?.isAuthenticated && parsed?.state?.user && parsed?.state?.token) {
           return {
             isAuthenticated: true,
             user: parsed.state.user,
-            token: parsed.state.token || 'jwt-token-active',
+            token: parsed.state.token,
           };
         }
       }
@@ -83,50 +83,10 @@ export const useAuthStore = create<AuthState>()(
             return true;
           }
         } catch (err) {
-          console.warn('Backend API auth error, checking local credentials fallback:', err);
-        }
-
-        // Local fallback for development testing
-        let userObj: AdminUser;
-        if (email === 'admin@nexustaff.com' && password === 'admin123') {
-          userObj = {
-            id: 'user-admin-1',
-            email: 'admin@nexustaff.com',
-            name: 'Arthur Pendelton',
-            role: 'SUPER_ADMIN',
-            assignedLocationIds: ['loc-mid', 'loc-cun', 'loc-mty'],
-          };
-        } else if (email === 'carlos.mendoza@nexustaff.com' && password === 'admin123') {
-          userObj = {
-            id: 'user-emp-1001',
-            email: 'carlos.mendoza@nexustaff.com',
-            name: 'Carlos Mendoza',
-            role: 'LOCATION_ADMIN',
-            assignedLocationIds: ['loc-mid'],
-          };
-        } else if (email && password.length >= 6) {
-          userObj = {
-            id: `user-${Date.now()}`,
-            email,
-            name: email.split('@')[0].toUpperCase(),
-            role: 'LOCATION_ADMIN',
-            assignedLocationIds: ['loc-mid'],
-          };
-        } else {
+          console.error('Backend API auth error:', err);
           return false;
         }
-
-        const mockToken = `jwt-token-${Date.now()}`;
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('nexustaff_token', mockToken);
-          localStorage.setItem('nexustaff_user', JSON.stringify(userObj));
-        }
-        set({
-          isAuthenticated: true,
-          user: userObj,
-          token: mockToken,
-        });
-        return true;
+        return false;
       },
 
       logout: () => {

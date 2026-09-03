@@ -1,9 +1,7 @@
-import { Controller, Get, Query, Res, UseGuards, UseInterceptors, HttpCode, HttpStatus, Req } from '@nestjs/common';
+import { Controller, Get, Query, Res, UseInterceptors, HttpCode, HttpStatus, Req } from '@nestjs/common';
 import { Response } from 'express';
 import { ReportsService } from '@application/services/reports.service';
 import { PunchQueryDto } from '@adapters/dtos/attendance.dtos';
-import { AuthGuard } from '@nestjs/passport';
-import { RolesAndLocationsGuard } from '@adapters/guards/roles-and-locations.guard';
 import { LocationIsolationInterceptor } from '@adapters/interceptors/location-isolation.interceptor';
 import { Roles } from '@adapters/decorators/roles-and-locations.decorator';
 import { UserRole } from '@domain/entities/user.entity';
@@ -13,7 +11,6 @@ export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
   @Get('time-punches/pdf')
-  @UseGuards(AuthGuard('jwt'), RolesAndLocationsGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.LOCATION_ADMIN, UserRole.SUPERVISOR)
   @UseInterceptors(LocationIsolationInterceptor)
   @HttpCode(HttpStatus.OK)
@@ -33,7 +30,6 @@ export class ReportsController {
   }
 
   @Get('payroll/excel')
-  @UseGuards(AuthGuard('jwt'), RolesAndLocationsGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.LOCATION_ADMIN)
   @UseInterceptors(LocationIsolationInterceptor)
   @HttpCode(HttpStatus.OK)

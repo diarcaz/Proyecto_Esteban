@@ -33,6 +33,8 @@ services:
         generateValue: true
       - key: JWT_EXPIRATION
         value: 7d
+      - key: CORS_ORIGIN
+        value: https://nexustaff-frontend.onrender.com,http://localhost:3000
 
   # 2. Frontend Application (Next.js 14 App Router)
   - type: web

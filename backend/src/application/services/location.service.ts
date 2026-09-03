@@ -5,8 +5,14 @@ import { PrismaService } from '@infrastructure/persistence/prisma/prisma.service
 export class LocationService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll() {
+  async findAll(allowedLocationIds?: string[]) {
+    const where: any = {};
+    if (allowedLocationIds && allowedLocationIds.length > 0) {
+      where.id = { in: allowedLocationIds };
+    }
+
     const locs = await this.prisma.location.findMany({
+      where,
       include: {
         _count: { select: { assignments: true } },
       },
