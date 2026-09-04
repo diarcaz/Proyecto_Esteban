@@ -11,6 +11,7 @@ import { StaffService } from '@application/services/staff.service';
 import { LocationService } from '@application/services/location.service';
 import { AuditService } from '@application/services/audit.service';
 import { SchedulesService } from '@application/services/schedules.service';
+import { AuthorizationService } from '@domain/security/authorization.service';
 import { AttendanceController } from '@adapters/controllers/attendance.controller';
 import { ReportsController } from '@adapters/controllers/reports.controller';
 import { StaffController } from '@adapters/controllers/staff.controller';
@@ -20,6 +21,8 @@ import { SchedulesController } from '@adapters/controllers/schedules.controller'
 import { HealthController } from '@adapters/controllers/health.controller';
 import { JwtAuthGuard } from '@adapters/guards/jwt-auth.guard';
 import { RolesAndLocationsGuard } from '@adapters/guards/roles-and-locations.guard';
+import { TenantGuard } from '@adapters/guards/tenant.guard';
+import { PermissionsGuard } from '@adapters/guards/permissions.guard';
 import { NotificationsGateway } from '@infrastructure/notifications/notifications.gateway';
 
 @Module({
@@ -29,8 +32,8 @@ import { NotificationsGateway } from '@infrastructure/notifications/notification
     }),
     ThrottlerModule.forRoot([
       {
-        ttl: 60000, // 60 seconds TTL
-        limit: 100, // 100 requests per 60 seconds limit for DDoS / anti-bruteforce security
+        ttl: 60000,
+        limit: 100,
       },
     ]),
     RedisModule,
@@ -47,6 +50,7 @@ import { NotificationsGateway } from '@infrastructure/notifications/notification
   ],
   providers: [
     PrismaService,
+    AuthorizationService,
     AttendanceService,
     ReportsService,
     StaffService,
@@ -54,6 +58,8 @@ import { NotificationsGateway } from '@infrastructure/notifications/notification
     AuditService,
     SchedulesService,
     NotificationsGateway,
+    TenantGuard,
+    PermissionsGuard,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

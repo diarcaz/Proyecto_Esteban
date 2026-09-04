@@ -35,11 +35,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         assignments: {
           select: { locationId: true },
         },
-        department: {
-          include: {
-            location: {
-              select: { companyId: true },
-            },
+        propertyAccess: {
+          select: {
+            propertyId: true,
+            roleOverride: true,
+            permissions: true,
           },
         },
       },
@@ -50,14 +50,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     const assignedLocationIds = (user.assignments || []).map((a: any) => a.locationId);
-    const companyId = user.department?.location?.companyId || null;
 
     return {
       id: user.id,
       email: user.email,
-      companyId,
+      companyId: user.companyId || null,
       employeeNumber: user.employeeNumber,
       role: user.role,
+      permissions: user.permissions || [],
+      propertyAccess: user.propertyAccess || [],
       status: user.status,
       assignedLocationIds,
       tokenId: payload.tokenId,
