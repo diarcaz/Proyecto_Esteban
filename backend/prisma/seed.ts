@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { encryptPin } from '../src/infrastructure/security/pin-encryption.util';
 
 const prisma = new PrismaClient();
 
@@ -76,6 +77,7 @@ async function main() {
       jobPositionCode: 'SUPER_ADMIN',
       hourlyRate: 50.0,
       pinCodeHash: await bcrypt.hash('999999', 10),
+      pinCodeEncrypted: encryptPin('999999'),
       preferredLanguage: 'es',
       status: 'ACTIVE',
     },
@@ -212,11 +214,13 @@ async function main() {
     const locId = empData.locationId;
     const { locationId, rawPinCode, ...userData } = empData;
     const pinCodeHash = await bcrypt.hash(rawPinCode, 10);
+    const pinCodeEncrypted = encryptPin(rawPinCode);
 
     const user = await prisma.user.create({
       data: {
         ...userData,
         pinCodeHash,
+        pinCodeEncrypted,
       },
     });
 

@@ -15,7 +15,7 @@ export class StaffController {
   async findAll(@Req() req: any) {
     try {
       const allowedLocationIds = req.query.allowed_location_ids as string[] | undefined;
-      return await this.staffService.findAll(allowedLocationIds);
+      return await this.staffService.findAll(allowedLocationIds, req.user);
     } catch (e: any) {
       if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
       throw new BadRequestException(e.message || 'Failed to fetch staff members');

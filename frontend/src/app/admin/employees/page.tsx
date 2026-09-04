@@ -5,13 +5,18 @@ import { staffApi } from '@/lib/api-client';
 import { MOCK_EMPLOYEES, EmployeeMock } from '@/lib/mock-data';
 import { useLocationStore, isLocationMatching } from '@/store/use-location-store';
 import { useAuthStore } from '@/store/use-auth-store';
-import { Users, Plus, Edit3, Trash2, Globe, AlertTriangle, CheckCircle2, RefreshCw, Loader2 } from 'lucide-react';
+import { Users, Plus, Edit3, Trash2, Globe, AlertTriangle, CheckCircle2, RefreshCw, Loader2, Eye, EyeOff } from 'lucide-react';
 
 export default function EmployeesPage() {
   const { locations, selectedLocationId, fetchLocations } = useLocationStore();
   const { user } = useAuthStore();
   const [employees, setEmployees] = useState<EmployeeMock[]>([]);
   const [loading, setLoading] = useState(true);
+  const [visiblePins, setVisiblePins] = useState<Record<string, boolean>>({});
+
+  const togglePinVisibility = (id: string) => {
+    setVisiblePins((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const filteredEmployees = employees.filter((emp) => {
     if (emp.jobPositionCode === 'SUPER_ADMIN' || emp.employeeNumber?.startsWith('ADM-')) {
@@ -60,7 +65,7 @@ export default function EmployeesPage() {
           jobPositionCode: item.jobPositionCode || 'STAFF',
           locationId: item.assignments?.[0]?.locationId || item.locationId || 'loc-mid',
           locationCode: item.assignments?.[0]?.location?.locationCode || item.locationCode || 'MID-1001',
-          pinCode: item.hasPin ? 'Configurado' : (item.pinCode || ''),
+          pinCode: item.pinCode ? item.pinCode : (item.hasPin ? 'Configurado' : ''),
           preferredLanguage: item.preferredLanguage || 'es',
         }));
         setEmployees(mapped);
@@ -303,7 +308,24 @@ export default function EmployeesPage() {
                     </td>
                     <td className="px-4 py-3.5 font-semibold text-slate-300">{emp.locationCode || emp.locationId}</td>
                     <td className="px-4 py-3.5 text-center font-mono font-bold text-emerald-400">
-                      {emp.pinCode ? `•••••• (${emp.pinCode})` : 'Sin PIN'}
+                      {emp.pinCode && emp.pinCode !== 'Configurado' ? (
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>{visiblePins[emp.id] ? emp.pinCode : '••••••'}</span>
+                          <span className="text-[10px] text-slate-400 font-sans font-normal">(Configurado)</span>
+                          <button
+                            type="button"
+                            onClick={() => togglePinVisibility(emp.id)}
+                            className="p-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer ml-1"
+                            title={visiblePins[emp.id] ? 'Ocultar PIN' : 'Ver PIN'}
+                          >
+                            {visiblePins[emp.id] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                          </button>
+                        </div>
+                      ) : emp.pinCode === 'Configurado' ? (
+                        <span className="text-slate-400 font-normal">•••••• (Configurado)</span>
+                      ) : (
+                        <span className="text-slate-500 font-normal">Sin PIN</span>
+                      )}
                     </td>
                     <td className="px-4 py-3.5 text-center">
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-950 text-slate-300 text-[10px] font-bold border border-slate-800">

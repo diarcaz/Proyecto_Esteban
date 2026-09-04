@@ -31,6 +31,8 @@ services:
           property: port
       - key: JWT_SECRET
         generateValue: true
+      - key: PIN_ENCRYPTION_KEY
+        generateValue: true
       - key: JWT_EXPIRATION
         value: 7d
       - key: CORS_ORIGIN
