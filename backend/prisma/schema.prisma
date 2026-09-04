@@ -9,6 +9,9 @@ generator client {
 
 enum UserRole {
   SUPER_ADMIN
+  OWNER
+  ADMIN
+  MANAGER
   LOCATION_ADMIN
   SUPERVISOR
   WORKER
@@ -41,6 +44,33 @@ enum AttendanceMethod {
   MANUAL_OVERRIDE
 }
 
+enum MarkupType {
+  FLAT_AMOUNT
+  PERCENTAGE
+  FIXED_BILL_RATE
+}
+
+enum TimeCorrectionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum TimesheetStatus {
+  DRAFT
+  SUBMITTED
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  CORRECTION_REQUIRED
+}
+
+enum PeriodStatus {
+  OPEN
+  PROCESSING
+  CLOSED
+}
+
 model Company {
   id        String     @id @default(uuid())
   name      String
@@ -48,40 +78,146 @@ model Company {
   createdAt DateTime   @default(now()) @map("created_at")
   updatedAt DateTime   @updatedAt @map("updated_at")
   locations Location[]
+  users     User[]
 
   @@map("companies")
 }
 
 model Location {
-  id           String                   @id @default(uuid())
-  companyId    String                   @map("company_id")
-  name         String
-  address      String
-  timezone     String                   @default("America/New_York")
-  locationCode String                   @map("location_code")
-  createdAt    DateTime                 @default(now()) @map("created_at")
-  updatedAt    DateTime                 @updatedAt @map("updated_at")
-  company      Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  assignments  UserLocationAssignment[]
-  logs         AttendanceLog[]
-  departments  Department[]
-  shifts       Shift[]
-  schedules    ShiftSchedule[]
+  id                  String                     @id @default(uuid())
+  companyId           String                     @map("company_id")
+  name                String
+  address             String
+  timezone            String                     @default("America/New_York")
+  locationCode        String                     @map("location_code")
+  createdAt           DateTime                   @default(now()) @map("created_at")
+  updatedAt           DateTime                   @updatedAt @map("updated_at")
+  company             Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assignments         UserLocationAssignment[]
+  logs                AttendanceLog[]
+  departments         Department[]
+  shifts              Shift[]
+  schedules           ShiftSchedule[]
+  positions           Position[]
+  employeeAssignments EmployeeAssignment[]
+  propertyAccess      UserPropertyAccess[]
+  operationalConfig   PropertyOperationalConfig?
+  billingInfo         PropertyBillingInfo?
+  contacts            PropertyContact[]
+  approvalWorkflows   ApprovalWorkflow[]
+  timeCorrections     TimeCorrectionRequest[]
+  timesheetPeriods    TimesheetPeriod[]
+  timesheets          Timesheet[]
+  workShifts          WorkShift[]
 
   @@map("locations")
 }
 
+model PropertyOperationalConfig {
+  id                      String   @id @default(uuid())
+  locationId              String   @unique @map("location_id")
+  weekStartDay            String   @default("MONDAY") @map("week_start_day")
+  payrollFrequency        String   @default("WEEKLY") @map("payroll_frequency")
+  payrollPeriod           String   @default("CURRENT_WEEK") @map("payroll_period")
+  payrollCutoff           String   @default("SUNDAY_2359") @map("payroll_cutoff")
+  payday                  String   @default("FRIDAY")
+  invoiceFrequency        String   @default("WEEKLY") @map("invoice_frequency")
+  invoiceCutoff           String   @default("SUNDAY_2359") @map("invoice_cutoff")
+  roundingRules           Json?    @map("rounding_rules")
+  maxShiftDurationMinutes Int      @default(960) @map("max_shift_duration_minutes")
+  geofenceLatitude        Float?   @map("geofence_latitude")
+  geofenceLongitude       Float?   @map("geofence_longitude")
+  geofenceRadiusMeters    Int?     @default(100) @map("geofence_radius_meters")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+  location                Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@map("property_operational_configs")
+}
+
+model PropertyBillingInfo {
+  id                 String   @id @default(uuid())
+  locationId         String   @unique @map("location_id")
+  legalBillingEntity String?  @map("legal_billing_entity")
+  billingAddress     String?  @map("billing_address")
+  paymentTerms       String?  @default("NET_30") @map("payment_terms")
+  poRequired         Boolean  @default(false) @map("po_required")
+  taxId              String?  @map("tax_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  location           Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@map("property_billing_infos")
+}
+
+model PropertyContact {
+  id          String   @id @default(uuid())
+  locationId  String   @map("location_id")
+  name        String
+  roleTitle   String   @map("role_title")
+  email       String
+  phone       String?
+  contactType String   @default("SUPERVISOR") @map("contact_type")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  location    Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@map("property_contacts")
+}
+
 model Department {
-  id         String   @id @default(uuid())
-  locationId String   @map("location_id")
-  name       String
-  deptCode   String   @map("dept_code")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
-  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  users      User[]
+  id                  String               @id @default(uuid())
+  locationId          String               @map("location_id")
+  name                String
+  deptCode            String               @map("dept_code")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  location            Location             @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  users               User[]
+  positions           Position[]
+  employeeAssignments EmployeeAssignment[]
+  workShifts          WorkShift[]
 
   @@map("departments")
+}
+
+model Position {
+  id                  String               @id @default(uuid())
+  locationId          String               @map("location_id")
+  departmentId        String               @map("department_id")
+  title               String
+  code                String
+  active              Boolean              @default(true)
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  location            Location             @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  department          Department           @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  rateConfigurations  RateConfiguration[]
+  employeeAssignments EmployeeAssignment[]
+  workShifts          WorkShift[]
+
+  @@map("positions")
+}
+
+model RateConfiguration {
+  id                  String               @id @default(uuid())
+  positionId          String               @map("position_id")
+  payRate             Decimal              @map("pay_rate") @db.Decimal(10, 2)
+  billRate            Decimal              @map("bill_rate") @db.Decimal(10, 2)
+  otPayRate           Decimal?             @map("ot_pay_rate") @db.Decimal(10, 2)
+  otBillRate          Decimal?             @map("ot_bill_rate") @db.Decimal(10, 2)
+  markupType          MarkupType           @default(PERCENTAGE) @map("markup_type")
+  markupValue         Decimal?             @map("markup_value") @db.Decimal(10, 2)
+  minimumShiftMins    Int?                 @default(240) @map("minimum_shift_mins")
+  effectiveFrom       DateTime             @default(now()) @map("effective_from")
+  effectiveUntil      DateTime?            @map("effective_until")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  position            Position             @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  employeeAssignments EmployeeAssignment[]
+  workShifts          WorkShift[]
+
+  @@map("rate_configurations")
 }
 
 model Shift {
@@ -117,27 +253,38 @@ model ShiftSchedule {
 }
 
 model User {
-  id                String                   @id @default(uuid())
-  employeeNumber    String                   @unique @map("employee_number")
-  firstName         String                   @map("first_name")
-  lastName          String                   @map("last_name")
-  email             String                   @unique
-  passwordHash      String                   @map("password_hash")
-  role              UserRole                 @default(WORKER)
-  jobPositionCode   String                   @default("STAFF") @map("job_position_code")
-  hourlyRate        Decimal                  @default(15.00) @map("hourly_rate") @db.Decimal(10, 2)
-  pinCodeHash       String?                  @map("pin_code_hash")
-  pinCodeEncrypted  String?                  @map("pin_code_encrypted")
-  preferredLanguage String                   @default("es") @map("preferred_language")
-  departmentId      String?                  @map("department_id")
-  status            UserStatus               @default(ACTIVE)
-  createdAt         DateTime                 @default(now()) @map("created_at")
-  updatedAt         DateTime                 @updatedAt @map("updated_at")
-  department        Department?              @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  assignments       UserLocationAssignment[]
-  attendanceLogs    AttendanceLog[]
-  auditLogs         AuditLog[]
-  shiftSchedules    ShiftSchedule[]
+  id                    String                     @id @default(uuid())
+  companyId             String?                    @map("company_id")
+  employeeNumber        String                     @unique @map("employee_number")
+  firstName             String                     @map("first_name")
+  lastName              String                     @map("last_name")
+  email                 String                     @unique
+  passwordHash          String                     @map("password_hash")
+  role                  UserRole                   @default(WORKER)
+  jobPositionCode       String                     @default("STAFF") @map("job_position_code")
+  hourlyRate            Decimal                    @default(15.00) @map("hourly_rate") @db.Decimal(10, 2)
+  pinCodeHash           String?                    @map("pin_code_hash")
+  pinCodeEncrypted      String?                    @map("pin_code_encrypted")
+  preferredLanguage     String                     @default("es") @map("preferred_language")
+  departmentId          String?                    @map("department_id")
+  permissions           String[]                   @default([])
+  status                UserStatus                 @default(ACTIVE)
+  createdAt             DateTime                   @default(now()) @map("created_at")
+  updatedAt             DateTime                   @updatedAt @map("updated_at")
+  company               Company?                   @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  department            Department?                @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  assignments           UserLocationAssignment[]
+  attendanceLogs        AttendanceLog[]
+  auditLogs             AuditLog[]
+  shiftSchedules        ShiftSchedule[]
+  employeeAssignments   EmployeeAssignment[]
+  propertyAccess        UserPropertyAccess[]
+  requestedCorrections  TimeCorrectionRequest[]    @relation("RequestedBy")
+  reviewedCorrections   TimeCorrectionRequest[]    @relation("ReviewedBy")
+  timesheets            Timesheet[]
+  approvalHistories     TimesheetApprovalHistory[]
+  workShifts            WorkShift[]
+  TimeCorrectionRequest TimeCorrectionRequest[]
 
   @@map("users")
 }
@@ -154,31 +301,208 @@ model UserLocationAssignment {
   @@map("user_location_assignments")
 }
 
+model EmployeeAssignment {
+  id                  String             @id @default(uuid())
+  userId              String             @map("user_id")
+  propertyId          String             @map("property_id")
+  departmentId        String             @map("department_id")
+  positionId          String             @map("position_id")
+  rateConfigurationId String?            @map("rate_configuration_id")
+  active              Boolean            @default(true)
+  effectiveFrom       DateTime           @default(now()) @map("effective_from")
+  effectiveUntil      DateTime?          @map("effective_until")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property            Location           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  department          Department         @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  position            Position           @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  rateConfiguration   RateConfiguration? @relation(fields: [rateConfigurationId], references: [id], onDelete: SetNull)
+
+  @@map("employee_assignments")
+}
+
+model UserPropertyAccess {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  propertyId   String    @map("property_id")
+  roleOverride UserRole? @map("role_override")
+  permissions  String[]  @default([])
+  createdAt    DateTime  @default(now()) @map("created_at")
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property     Location  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, propertyId])
+  @@map("user_property_accesses")
+}
+
+model WorkShift {
+  id                   String             @id @default(uuid())
+  userId               String             @map("user_id")
+  locationId           String             @map("location_id")
+  departmentId         String?            @map("department_id")
+  positionId           String?            @map("position_id")
+  employeeAssignmentId String?            @map("employee_assignment_id")
+  rateConfigurationId  String?            @map("rate_configuration_id")
+  clockInTimestamp     DateTime           @map("clock_in_timestamp")
+  clockOutTimestamp    DateTime?          @map("clock_out_timestamp")
+  effectiveClockIn     DateTime?          @map("effective_clock_in")
+  effectiveClockOut    DateTime?          @map("effective_clock_out")
+  payRateApplied       Decimal?           @map("pay_rate_applied") @db.Decimal(10, 2)
+  billRateApplied      Decimal?           @map("bill_rate_applied") @db.Decimal(10, 2)
+  otPayRateApplied     Decimal?           @map("ot_pay_rate_applied") @db.Decimal(10, 2)
+  otBillRateApplied    Decimal?           @map("ot_bill_rate_applied") @db.Decimal(10, 2)
+  regularMinutes       Int?               @default(0) @map("regular_minutes")
+  overtimeMinutes      Int?               @default(0) @map("overtime_minutes")
+  status               String             @default("OPEN")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location             Location           @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  department           Department?        @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  position             Position?          @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  rateConfiguration    RateConfiguration? @relation(fields: [rateConfigurationId], references: [id], onDelete: SetNull)
+  logs                 AttendanceLog[]
+
+  @@index([userId, clockInTimestamp])
+  @@index([locationId, clockInTimestamp])
+  @@map("work_shifts")
+}
+
 model AttendanceLog {
-  id                   String           @id @default(uuid())
-  userId               String           @map("user_id")
-  locationId           String           @map("location_id")
-  shiftScheduleId      String?          @map("shift_schedule_id")
-  timestamp            DateTime         @default(now())
-  punchType            AttendanceType   @map("punch_type")
-  punchMethod          AttendanceMethod @default(KIOSK_PIN) @map("punch_method")
-  actualTimestamp      DateTime         @default(now()) @map("actual_timestamp")
-  takenLunch           Boolean          @default(false) @map("taken_lunch")
-  calculatedHours      Decimal?         @map("calculated_hours") @db.Decimal(5, 2)
-  isOvertime           Boolean          @default(false) @map("is_overtime")
-  isOvertimeApproved   Boolean          @default(false) @map("is_overtime_approved")
-  status               AttendanceStatus @default(ON_TIME)
-  deviceInfo           Json?            @map("device_info")
-  photoUrl             String?          @map("photo_url")
-  locationCoordinates  Json?            @map("location_coordinates")
-  createdAt            DateTime         @default(now()) @map("created_at")
-  user                 User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  location             Location         @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  shiftSchedule        ShiftSchedule?   @relation(fields: [shiftScheduleId], references: [id], onDelete: SetNull)
+  id                  String                  @id @default(uuid())
+  userId              String                  @map("user_id")
+  locationId          String                  @map("location_id")
+  shiftScheduleId     String?                 @map("shift_schedule_id")
+  workShiftId         String?                 @map("work_shift_id")
+  timestamp           DateTime                @default(now())
+  punchType           AttendanceType          @map("punch_type")
+  punchMethod         AttendanceMethod        @default(KIOSK_PIN) @map("punch_method")
+  actualTimestamp     DateTime                @default(now()) @map("actual_timestamp")
+  effectiveTimestamp  DateTime?               @map("effective_timestamp")
+  takenLunch          Boolean                 @default(false) @map("taken_lunch")
+  calculatedHours     Decimal?                @map("calculated_hours") @db.Decimal(5, 2)
+  isOvertime          Boolean                 @default(false) @map("is_overtime")
+  isOvertimeApproved  Boolean                 @default(false) @map("is_overtime_approved")
+  status              AttendanceStatus        @default(ON_TIME)
+  deviceInfo          Json?                   @map("device_info")
+  photoUrl            String?                 @map("photo_url")
+  locationCoordinates Json?                   @map("location_coordinates")
+  createdAt           DateTime                @default(now()) @map("created_at")
+  user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location            Location                @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  shiftSchedule       ShiftSchedule?          @relation(fields: [shiftScheduleId], references: [id], onDelete: SetNull)
+  workShift           WorkShift?              @relation(fields: [workShiftId], references: [id], onDelete: SetNull)
+  corrections         TimeCorrectionRequest[]
 
   @@index([userId, timestamp])
   @@index([locationId, timestamp])
   @@map("attendance_logs")
+}
+
+model TimeCorrectionRequest {
+  id                 String               @id @default(uuid())
+  attendanceLogId    String?              @map("attendance_log_id")
+  userId             String               @map("user_id")
+  propertyId         String               @map("property_id")
+  originalTimestamp  DateTime?            @map("original_timestamp")
+  requestedTimestamp DateTime             @map("requested_timestamp")
+  effectiveTimestamp DateTime?            @map("effective_timestamp")
+  correctionType     String               @map("correction_type")
+  reason             String
+  requestedById      String               @map("requested_by_id")
+  reviewedById       String?              @map("reviewed_by_id")
+  status             TimeCorrectionStatus @default(PENDING)
+  reviewedAt         DateTime?            @map("reviewed_at")
+  comments           String?
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+  attendanceLog      AttendanceLog?       @relation(fields: [attendanceLogId], references: [id], onDelete: SetNull)
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property           Location             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  requestedBy        User                 @relation("RequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  reviewedBy         User?                @relation("ReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@map("time_correction_requests")
+}
+
+model ApprovalWorkflow {
+  id         String         @id @default(uuid())
+  locationId String         @map("location_id")
+  name       String
+  active     Boolean        @default(true)
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+  location   Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  steps      ApprovalStep[]
+
+  @@map("approval_workflows")
+}
+
+model ApprovalStep {
+  id             String           @id @default(uuid())
+  workflowId     String           @map("workflow_id")
+  stepOrder      Int              @map("step_order")
+  stepName       String           @map("step_name")
+  approverRole   UserRole?        @map("approver_role")
+  approverUserId String?          @map("approver_user_id")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  workflow       ApprovalWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, stepOrder])
+  @@map("approval_steps")
+}
+
+model TimesheetPeriod {
+  id         String       @id @default(uuid())
+  locationId String       @map("location_id")
+  startDate  DateTime     @map("start_date")
+  endDate    DateTime     @map("end_date")
+  periodType String       @default("WEEKLY") @map("period_type")
+  status     PeriodStatus @default(OPEN)
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+  location   Location     @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  timesheets Timesheet[]
+
+  @@map("timesheet_periods")
+}
+
+model Timesheet {
+  id                String                     @id @default(uuid())
+  timesheetPeriodId String                     @map("timesheet_period_id")
+  userId            String                     @map("user_id")
+  locationId        String                     @map("location_id")
+  regularHours      Decimal                    @default(0.00) @map("regular_hours") @db.Decimal(10, 2)
+  overtimeHours     Decimal                    @default(0.00) @map("overtime_hours") @db.Decimal(10, 2)
+  totalHours        Decimal                    @default(0.00) @map("total_hours") @db.Decimal(10, 2)
+  currentStepOrder  Int                        @default(1) @map("current_step_order")
+  status            TimesheetStatus            @default(DRAFT)
+  createdAt         DateTime                   @default(now()) @map("created_at")
+  updatedAt         DateTime                   @updatedAt @map("updated_at")
+  period            TimesheetPeriod            @relation(fields: [timesheetPeriodId], references: [id], onDelete: Cascade)
+  user              User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location          Location                   @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  approvalHistory   TimesheetApprovalHistory[]
+
+  @@unique([timesheetPeriodId, userId])
+  @@map("timesheets")
+}
+
+model TimesheetApprovalHistory {
+  id             String           @id @default(uuid())
+  timesheetId    String           @map("timesheet_id")
+  actorId        String           @map("actor_id")
+  previousStatus TimesheetStatus? @map("previous_status")
+  newStatus      TimesheetStatus  @map("new_status")
+  notes          String?
+  stepOrder      Int              @map("step_order")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  timesheet      Timesheet        @relation(fields: [timesheetId], references: [id], onDelete: Cascade)
+  actor          User             @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@map("timesheet_approval_histories")
 }
 
 model AuditLog {
