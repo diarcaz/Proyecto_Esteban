@@ -1,10 +1,11 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, BadRequestException, NotFoundException, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, BadRequestException, NotFoundException, ForbiddenException, UnauthorizedException, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AttendanceService } from '../../application/services/attendance.service';
 import { Roles } from '@adapters/decorators/roles-and-locations.decorator';
 import { Public } from '@adapters/decorators/public.decorator';
 import { UserRole } from '@domain/entities/user.entity';
+import { assertLocationAccess } from '@infrastructure/auth/location-access.util';
 
 @ApiTags('Attendance')
 @Controller('api/v1/attendance')
@@ -12,12 +13,32 @@ export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
 
   @Post('clock')
-  @ApiOperation({ summary: 'Submit mobile/GPS attendance punch' })
-  async clockPunch(@Body() body: any) {
+  @ApiOperation({ summary: 'Submit mobile/GPS attendance punch for authenticated user' })
+  async clockPunch(@Body() body: any, @Req() req: any) {
     try {
+      const userId = req.user.id;
+      return await this.attendanceService.processStandardClock(userId, body);
+    } catch (e: any) {
+      if (e instanceof ForbiddenException || e instanceof NotFoundException || e instanceof UnauthorizedException) throw e;
+      throw new BadRequestException(e.message || 'Failed to record attendance punch');
+    }
+  }
+
+  @Post('admin-clock')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.LOCATION_ADMIN)
+  @ApiOperation({ summary: 'Submit proxy attendance punch on behalf of an employee' })
+  async adminClockPunch(@Body() body: any, @Req() req: any) {
+    try {
+      if (!body.user_id) {
+        throw new BadRequestException('Target employee user_id is required.');
+      }
+      if (body.location_id) {
+        assertLocationAccess(req.user, body.location_id);
+      }
       return await this.attendanceService.processStandardClock(body.user_id, body);
     } catch (e: any) {
-      throw new BadRequestException(e.message || 'Failed to record attendance punch');
+      if (e instanceof ForbiddenException || e instanceof NotFoundException || e instanceof UnauthorizedException) throw e;
+      throw new BadRequestException(e.message || 'Failed to record proxy attendance punch');
     }
   }
 
@@ -54,11 +75,10 @@ export class AttendanceController {
     @Req() req: any,
   ) {
     try {
-      const actorId = req.user?.id || 'system';
       const ip = req.ip || req.headers['x-forwarded-for'];
-      return await this.attendanceService.adjustPunchTime(id, body, actorId, ip);
+      return await this.attendanceService.adjustPunchTime(id, body, req.user, ip);
     } catch (e: any) {
-      if (e instanceof NotFoundException) throw e;
+      if (e instanceof NotFoundException || e instanceof ForbiddenException) throw e;
       throw new BadRequestException(e.message || `Failed to update attendance log ${id}`);
     }
   }
@@ -68,11 +88,10 @@ export class AttendanceController {
   @ApiOperation({ summary: 'Approve overtime shift' })
   async approveOvertime(@Param('id') id: string, @Req() req: any) {
     try {
-      const actorId = req.user?.id || 'system';
       const ip = req.ip || req.headers['x-forwarded-for'];
-      return await this.attendanceService.approveOvertime(id, actorId, ip);
+      return await this.attendanceService.approveOvertime(id, req.user, ip);
     } catch (e: any) {
-      if (e instanceof NotFoundException) throw e;
+      if (e instanceof NotFoundException || e instanceof ForbiddenException) throw e;
       throw new BadRequestException(e.message || `Failed to approve overtime for log ${id}`);
     }
   }

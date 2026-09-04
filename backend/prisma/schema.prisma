@@ -23,6 +23,8 @@ enum AttendanceType {
   CLOCK_IN
   LUNCH_START
   LUNCH_END
+  LUNCH2_START
+  LUNCH2_END
   CLOCK_OUT
 }
 

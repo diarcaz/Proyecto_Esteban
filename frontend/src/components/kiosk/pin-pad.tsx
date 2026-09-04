@@ -34,8 +34,10 @@ const TRANSLATIONS = {
     position: 'Puesto:',
     scheduledShift: 'Turno Programado:',
     clockIn: 'CLOCK IN (ENTRADA)',
-    lunchStart: 'INICIO DE ALMUERZO',
-    lunchEnd: 'FIN DE ALMUERZO',
+    lunchStart: 'INICIO ALMUERZO 1',
+    lunchEnd: 'FIN ALMUERZO 1',
+    lunch2Start: 'INICIO ALMUERZO 2',
+    lunch2End: 'FIN ALMUERZO 2',
     clockOut: 'CLOCK OUT (SALIDA)',
     notYou: '¿No eres tú? Limpiar PIN',
     clear: 'BORRAR',
@@ -44,8 +46,8 @@ const TRANSLATIONS = {
     resettingKiosk: 'Reiniciando quiosco para el siguiente trabajador...',
     greetings: {
       morning: '¡Buenos días',
-      afternoon: '¡Buenas tardes',
-      evening: '¡Buenas noches',
+      afternoon: '¡Buenos tardes',
+      evening: '¡Buenos noches',
     },
   },
   en: {
@@ -55,8 +57,10 @@ const TRANSLATIONS = {
     position: 'Position:',
     scheduledShift: 'Scheduled Shift:',
     clockIn: 'CLOCK IN',
-    lunchStart: 'START BREAK',
-    lunchEnd: 'END BREAK',
+    lunchStart: 'START BREAK 1',
+    lunchEnd: 'END BREAK 1',
+    lunch2Start: 'START BREAK 2',
+    lunch2End: 'END BREAK 2',
     clockOut: 'CLOCK OUT',
     notYou: 'Not you? Clear PIN',
     clear: 'CLEAR',
@@ -354,7 +358,7 @@ export function PinPad() {
     return nowDate.getTime() > schedDate.getTime();
   };
 
-  const handlePunchAction = async (type: 'CLOCK_IN' | 'LUNCH_START' | 'LUNCH_END' | 'CLOCK_OUT') => {
+  const handlePunchAction = async (type: 'CLOCK_IN' | 'LUNCH_START' | 'LUNCH_END' | 'LUNCH2_START' | 'LUNCH2_END' | 'CLOCK_OUT') => {
     if (!activeEmp || isLockedOut) return;
 
     audioEngine.playSuccessBeep();
@@ -362,10 +366,12 @@ export function PinPad() {
     const photoSnapshot = capturePhotoSnapshot();
     const now = new Date();
     const timeStr = formatTime(now);
-    const labelMap = {
+    const labelMap: Record<string, string> = {
       CLOCK_IN: t.clockIn,
       LUNCH_START: t.lunchStart,
       LUNCH_END: t.lunchEnd,
+      LUNCH2_START: (t as any).lunch2Start || 'INICIO ALMUERZO 2',
+      LUNCH2_END: (t as any).lunch2End || 'FIN ALMUERZO 2',
       CLOCK_OUT: t.clockOut,
     };
 
@@ -400,7 +406,7 @@ export function PinPad() {
         isOvertime: false,
         status: isLate ? 'LATE' : 'ON_TIME',
       };
-    } else if (type === 'LUNCH_START') {
+    } else if (type === 'LUNCH_START' || type === 'LUNCH2_START') {
       updatedPunch = {
         ...(existingPunch || {
           id: `kiosk-punch-${Date.now()}`,
@@ -418,7 +424,7 @@ export function PinPad() {
         lunchStart: timeStr,
         takenLunch: true,
       };
-    } else if (type === 'LUNCH_END') {
+    } else if (type === 'LUNCH_END' || type === 'LUNCH2_END') {
       updatedPunch = {
         ...(existingPunch || {
           id: `kiosk-punch-${Date.now()}`,
@@ -614,30 +620,44 @@ export function PinPad() {
             </span>
           </div>
 
-          <div className="grid grid-cols-2 gap-3.5 pt-1">
+          <div className="grid grid-cols-2 gap-2.5 pt-1">
             <button
               onClick={() => handlePunchAction('CLOCK_IN')}
-              className="flex items-center justify-center gap-2 p-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-black text-xs sm:text-sm shadow-xl connecteam-glow-emerald transition-all active:scale-95 cursor-pointer border border-emerald-400/40"
+              className="flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-black text-xs shadow-xl transition-all active:scale-95 cursor-pointer border border-emerald-400/40"
             >
-              <LogIn className="h-5 w-5" /> {t.clockIn}
-            </button>
-            <button
-              onClick={() => handlePunchAction('LUNCH_START')}
-              className="flex items-center justify-center gap-2 p-4 rounded-2xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white font-black text-xs sm:text-sm shadow-xl connecteam-glow-amber transition-all active:scale-95 cursor-pointer border border-amber-400/40"
-            >
-              <Utensils className="h-5 w-5" /> {t.lunchStart}
-            </button>
-            <button
-              onClick={() => handlePunchAction('LUNCH_END')}
-              className="flex items-center justify-center gap-2 p-4 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-black text-xs sm:text-sm shadow-xl connecteam-glow-blue transition-all active:scale-95 cursor-pointer border border-blue-400/40"
-            >
-              <Utensils className="h-5 w-5" /> {t.lunchEnd}
+              <LogIn className="h-4 w-4" /> {t.clockIn}
             </button>
             <button
               onClick={() => handlePunchAction('CLOCK_OUT')}
-              className="flex items-center justify-center gap-2 p-4 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white font-black text-xs sm:text-sm shadow-xl connecteam-glow-rose transition-all active:scale-95 cursor-pointer border border-rose-400/40"
+              className="flex items-center justify-center gap-2 p-3.5 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white font-black text-xs shadow-xl transition-all active:scale-95 cursor-pointer border border-rose-400/40"
             >
-              <LogOut className="h-5 w-5" /> {t.clockOut}
+              <LogOut className="h-4 w-4" /> {t.clockOut}
+            </button>
+
+            <button
+              onClick={() => handlePunchAction('LUNCH_START')}
+              className="flex items-center justify-center gap-2 p-3 rounded-2xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white font-black text-xs shadow-xl transition-all active:scale-95 cursor-pointer border border-amber-400/40"
+            >
+              <Utensils className="h-4 w-4" /> {t.lunchStart}
+            </button>
+            <button
+              onClick={() => handlePunchAction('LUNCH_END')}
+              className="flex items-center justify-center gap-2 p-3 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-black text-xs shadow-xl transition-all active:scale-95 cursor-pointer border border-blue-400/40"
+            >
+              <Utensils className="h-4 w-4" /> {t.lunchEnd}
+            </button>
+
+            <button
+              onClick={() => handlePunchAction('LUNCH2_START')}
+              className="flex items-center justify-center gap-2 p-3 rounded-2xl bg-gradient-to-r from-amber-700 to-amber-600 hover:from-amber-600 hover:to-amber-500 text-white font-black text-xs shadow-xl transition-all active:scale-95 cursor-pointer border border-amber-500/40"
+            >
+              <Utensils className="h-4 w-4" /> {(t as any).lunch2Start || 'INICIO ALMUERZO 2'}
+            </button>
+            <button
+              onClick={() => handlePunchAction('LUNCH2_END')}
+              className="flex items-center justify-center gap-2 p-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-black text-xs shadow-xl transition-all active:scale-95 cursor-pointer border border-indigo-400/40"
+            >
+              <Utensils className="h-4 w-4" /> {(t as any).lunch2End || 'FIN ALMUERZO 2'}
             </button>
           </div>
 

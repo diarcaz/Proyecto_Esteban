@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@infrastructure/persistence/prisma/prisma.service';
+import { assertLocationAccess } from '@infrastructure/auth/location-access.util';
 
 @Injectable()
 export class LocationService {
@@ -56,9 +57,13 @@ export class LocationService {
     return location;
   }
 
-  async update(id: string, dto: any) {
+  async update(id: string, dto: any, currentUser?: any) {
     const loc = await this.prisma.location.findUnique({ where: { id } });
     if (!loc) throw new NotFoundException(`Location ${id} not found.`);
+
+    if (currentUser) {
+      assertLocationAccess(currentUser, loc.id);
+    }
 
     return this.prisma.location.update({
       where: { id },
@@ -70,9 +75,14 @@ export class LocationService {
     });
   }
 
-  async remove(id: string) {
+  async remove(id: string, currentUser?: any) {
     const loc = await this.prisma.location.findUnique({ where: { id } });
     if (!loc) throw new NotFoundException(`Location ${id} not found.`);
+
+    if (currentUser) {
+      assertLocationAccess(currentUser, loc.id);
+    }
+
     await this.prisma.location.delete({ where: { id } });
     return { message: `Location ${loc.name} deleted successfully.` };
   }

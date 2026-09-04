@@ -9,7 +9,7 @@ export interface OfflinePunch {
   employee_number: string;
   pin_code: string;
   location_code: string;
-  type: 'CLOCK_IN' | 'LUNCH_START' | 'LUNCH_END' | 'CLOCK_OUT';
+  type: 'CLOCK_IN' | 'LUNCH_START' | 'LUNCH_END' | 'LUNCH2_START' | 'LUNCH2_END' | 'CLOCK_OUT';
   timestamp: string;
   photoUrl?: string;
   device_info?: any;

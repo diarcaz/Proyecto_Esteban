@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../persistence/prisma/prisma.service';
 import { RedisService } from '../cache/redis.service';
 import { LoginDto } from './dto/login.dto';
@@ -13,6 +14,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly redisService: RedisService,
+    private readonly configService: ConfigService,
   ) {}
 
   async login(dto: LoginDto) {
@@ -68,9 +70,11 @@ export class AuthService {
 
   async refreshTokens(dto: RefreshTokenDto) {
     try {
-      const decoded = this.jwtService.verify(dto.refreshToken, {
-        secret: (process as any).env.JWT_SECRET || 'super-secret-enterprise-key',
-      });
+      const secret = this.configService.get<string>('JWT_SECRET');
+      if (!secret) {
+        throw new Error('FATAL SECURITY ERROR: JWT_SECRET environment variable is missing or empty.');
+      }
+      const decoded = this.jwtService.verify(dto.refreshToken, { secret });
 
       const savedToken = await this.redisService.getRefreshToken(decoded.sub, decoded.tokenId);
       if (!savedToken || savedToken !== dto.refreshToken) {
@@ -84,7 +88,8 @@ export class AuthService {
       await this.redisService.setRefreshToken(decoded.sub, newTokId, tokens.refreshToken, 7 * 24 * 60 * 60);
 
       return tokens;
-    } catch {
+    } catch (e: any) {
+      if (e.message?.includes('FATAL SECURITY ERROR')) throw e;
       throw new UnauthorizedException('Invalid refresh token');
     }
   }

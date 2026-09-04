@@ -12,9 +12,13 @@ import { PrismaService } from '../persistence/prisma/prisma.service';
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET', 'super-secret-enterprise-key'),
-      }),
+      useFactory: async (configService: ConfigService) => {
+        const secret = configService.get<string>('JWT_SECRET');
+        if (!secret) {
+          throw new Error('FATAL SECURITY ERROR: JWT_SECRET environment variable is missing or empty.');
+        }
+        return { secret };
+      },
       inject: [ConfigService],
     }),
   ],

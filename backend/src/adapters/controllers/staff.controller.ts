@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, BadRequestException, NotFoundException, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, BadRequestException, NotFoundException, ForbiddenException, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { StaffService } from '../../application/services/staff.service';
 import { Roles } from '@adapters/decorators/roles-and-locations.decorator';
@@ -17,6 +17,7 @@ export class StaffController {
       const allowedLocationIds = req.query.allowed_location_ids as string[] | undefined;
       return await this.staffService.findAll(allowedLocationIds);
     } catch (e: any) {
+      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
       throw new BadRequestException(e.message || 'Failed to fetch staff members');
     }
   }
@@ -24,10 +25,11 @@ export class StaffController {
   @Get(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.LOCATION_ADMIN, UserRole.SUPERVISOR)
   @ApiOperation({ summary: 'Get staff member by ID' })
-  async findOne(@Param('id') id: string) {
+  async findOne(@Param('id') id: string, @Req() req: any) {
     try {
-      return await this.staffService.findOne(id);
+      return await this.staffService.findOne(id, req.user);
     } catch (e: any) {
+      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
       throw new NotFoundException(e.message || `Staff member ${id} not found`);
     }
   }
@@ -35,10 +37,11 @@ export class StaffController {
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.LOCATION_ADMIN)
   @ApiOperation({ summary: 'Create new staff member' })
-  async create(@Body() body: any) {
+  async create(@Body() body: any, @Req() req: any) {
     try {
-      return await this.staffService.create(body);
+      return await this.staffService.create(body, req.user);
     } catch (e: any) {
+      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
       throw new BadRequestException(e.message || 'Failed to create staff member');
     }
   }
@@ -46,10 +49,11 @@ export class StaffController {
   @Patch(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.LOCATION_ADMIN)
   @ApiOperation({ summary: 'Update staff member' })
-  async update(@Param('id') id: string, @Body() body: any) {
+  async update(@Param('id') id: string, @Body() body: any, @Req() req: any) {
     try {
-      return await this.staffService.update(id, body);
+      return await this.staffService.update(id, body, req.user);
     } catch (e: any) {
+      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
       throw new BadRequestException(e.message || `Failed to update staff member ${id}`);
     }
   }
@@ -57,10 +61,11 @@ export class StaffController {
   @Delete(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.LOCATION_ADMIN)
   @ApiOperation({ summary: 'Remove (soft-delete) staff member' })
-  async remove(@Param('id') id: string) {
+  async remove(@Param('id') id: string, @Req() req: any) {
     try {
-      return await this.staffService.remove(id);
+      return await this.staffService.remove(id, req.user);
     } catch (e: any) {
+      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
       throw new BadRequestException(e.message || `Failed to delete staff member ${id}`);
     }
   }

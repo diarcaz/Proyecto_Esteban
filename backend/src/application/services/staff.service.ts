@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '@infrastructure/persistence/prisma/prisma.service';
+import { assertLocationAccess } from '@infrastructure/auth/location-access.util';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 
@@ -58,16 +59,26 @@ export class StaffService {
     });
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, currentUser?: any) {
     const user = await this.prisma.user.findUnique({
       where: { id },
       select: USER_SAFE_SELECT,
     });
     if (!user) throw new NotFoundException(`Staff member ${id} not found.`);
+
+    if (currentUser) {
+      const locationIds = user.assignments?.map((a: any) => a.locationId) || [];
+      assertLocationAccess(currentUser, locationIds);
+    }
+
     return user;
   }
 
-  async create(dto: any) {
+  async create(dto: any, currentUser?: any) {
+    if (currentUser && dto.locationId) {
+      assertLocationAccess(currentUser, dto.locationId);
+    }
+
     const rawPassword = dto.password || crypto.randomBytes(24).toString('hex');
     const passwordHash = await bcrypt.hash(rawPassword, 10);
     const pinCodeHash = dto.pinCode ? await bcrypt.hash(dto.pinCode, 10) : null;
@@ -97,9 +108,24 @@ export class StaffService {
     return user;
   }
 
-  async update(id: string, dto: any) {
-    const user = await this.prisma.user.findUnique({ where: { id }, select: { id: true, pinCodeHash: true } });
+  async update(id: string, dto: any, currentUser?: any) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        pinCodeHash: true,
+        assignments: { select: { locationId: true } },
+      },
+    });
     if (!user) throw new NotFoundException(`Staff member ${id} not found.`);
+
+    if (currentUser) {
+      const locationIds = user.assignments?.map((a: any) => a.locationId) || [];
+      assertLocationAccess(currentUser, locationIds);
+      if (dto.locationId) {
+        assertLocationAccess(currentUser, dto.locationId);
+      }
+    }
 
     const pinCodeHash = dto.pinCode ? await bcrypt.hash(dto.pinCode, 10) : user.pinCodeHash;
 
@@ -125,9 +151,22 @@ export class StaffService {
     return updated;
   }
 
-  async remove(id: string) {
-    const user = await this.prisma.user.findUnique({ where: { id }, select: { id: true, firstName: true, lastName: true } });
+  async remove(id: string, currentUser?: any) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        assignments: { select: { locationId: true } },
+      },
+    });
     if (!user) throw new NotFoundException(`Staff member ${id} not found.`);
+
+    if (currentUser) {
+      const locationIds = user.assignments?.map((a: any) => a.locationId) || [];
+      assertLocationAccess(currentUser, locationIds);
+    }
 
     await this.prisma.user.update({ where: { id }, data: { status: 'TERMINATED' } });
     return { message: `Staff member ${user.firstName} ${user.lastName} removed successfully.` };

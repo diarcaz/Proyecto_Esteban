@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, UnauthorizedException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@infrastructure/persistence/prisma/prisma.service';
 import { RedisService } from '@infrastructure/cache/redis.service';
+import { assertLocationAccess } from '@infrastructure/auth/location-access.util';
 import { StandardClockDto, KioskClockDto, PunchQueryDto } from '@adapters/dtos/attendance.dtos';
 import { AttendanceType, AttendanceStatus, AttendanceMethod } from '@domain/entities/attendance-log.entity';
 import * as bcrypt from 'bcrypt';
@@ -198,18 +199,27 @@ export class AttendanceService {
           orderBy: { timestamp: 'asc' },
         });
 
-        const lunchStart = currentCycleLogs.find((l) => l.punchType === AttendanceType.LUNCH_START);
-        const lunchEnd = currentCycleLogs.find((l) => l.punchType === AttendanceType.LUNCH_END);
+        const lunch1Start = currentCycleLogs.find((l) => l.punchType === AttendanceType.LUNCH_START);
+        const lunch1End = currentCycleLogs.find((l) => l.punchType === AttendanceType.LUNCH_END);
+        let lunch1Ms = 0;
 
-        const grossMs = timestamp.getTime() - latestClockIn.timestamp.getTime();
-        let lunchMs = 0;
-
-        if (lunchStart && lunchEnd) {
-          lunchMs = lunchEnd.timestamp.getTime() - lunchStart.timestamp.getTime();
-          takenLunch = true;
+        if (lunch1Start && lunch1End) {
+          lunch1Ms = Math.max(0, lunch1End.timestamp.getTime() - lunch1Start.timestamp.getTime());
         }
 
-        const netMs = Math.max(0, grossMs - lunchMs);
+        const lunch2Start = currentCycleLogs.find((l) => l.punchType === AttendanceType.LUNCH2_START);
+        const lunch2End = currentCycleLogs.find((l) => l.punchType === AttendanceType.LUNCH2_END);
+        let lunch2Ms = 0;
+
+        if (lunch2Start && lunch2End) {
+          lunch2Ms = Math.max(0, lunch2End.timestamp.getTime() - lunch2Start.timestamp.getTime());
+        }
+
+        const grossMs = timestamp.getTime() - latestClockIn.timestamp.getTime();
+        const totalLunchMs = lunch1Ms + lunch2Ms;
+        takenLunch = totalLunchMs > 0;
+
+        const netMs = Math.max(0, grossMs - totalLunchMs);
         const netHours = parseFloat((netMs / (1000 * 60 * 60)).toFixed(2));
 
         calculatedHours = netHours;
@@ -265,8 +275,14 @@ export class AttendanceService {
     }
 
     if (previousType === AttendanceType.CLOCK_IN) {
-      if (nextType !== AttendanceType.LUNCH_START && nextType !== AttendanceType.CLOCK_OUT) {
-        throw new BadRequestException(`Invalid punch sequence after CLOCK_IN. Expected LUNCH_START or CLOCK_OUT, got ${nextType}.`);
+      if (
+        nextType !== AttendanceType.LUNCH_START &&
+        nextType !== AttendanceType.LUNCH2_START &&
+        nextType !== AttendanceType.CLOCK_OUT
+      ) {
+        throw new BadRequestException(
+          `Invalid punch sequence after CLOCK_IN. Expected LUNCH_START, LUNCH2_START or CLOCK_OUT, got ${nextType}.`,
+        );
       }
       return;
     }
@@ -279,18 +295,49 @@ export class AttendanceService {
     }
 
     if (previousType === AttendanceType.LUNCH_END) {
-      if (nextType !== AttendanceType.CLOCK_OUT && nextType !== AttendanceType.LUNCH_START) {
-        throw new BadRequestException(`Invalid punch sequence after LUNCH_END. Expected CLOCK_OUT, got ${nextType}.`);
+      if (
+        nextType !== AttendanceType.CLOCK_OUT &&
+        nextType !== AttendanceType.LUNCH_START &&
+        nextType !== AttendanceType.LUNCH2_START
+      ) {
+        throw new BadRequestException(
+          `Invalid punch sequence after LUNCH_END. Expected LUNCH2_START or CLOCK_OUT, got ${nextType}.`,
+        );
+      }
+      return;
+    }
+
+    if (previousType === AttendanceType.LUNCH2_START) {
+      if (nextType !== AttendanceType.LUNCH2_END) {
+        throw new BadRequestException(`Invalid punch sequence. Must perform LUNCH2_END after LUNCH2_START.`);
+      }
+      return;
+    }
+
+    if (previousType === AttendanceType.LUNCH2_END) {
+      if (
+        nextType !== AttendanceType.CLOCK_OUT &&
+        nextType !== AttendanceType.LUNCH_START &&
+        nextType !== AttendanceType.LUNCH2_START
+      ) {
+        throw new BadRequestException(
+          `Invalid punch sequence after LUNCH2_END. Expected CLOCK_OUT, got ${nextType}.`,
+        );
       }
       return;
     }
   }
 
-  async adjustPunchTime(id: string, dto: { actualIn?: string; actualOut?: string }, actorId: string, ipAddress?: string) {
+  async adjustPunchTime(id: string, dto: { actualIn?: string; actualOut?: string }, currentUserOrActorId: any, ipAddress?: string) {
     const log = await this.prisma.attendanceLog.findUnique({ where: { id } });
     if (!log) {
       throw new NotFoundException(`Attendance log ${id} not found.`);
     }
+
+    if (typeof currentUserOrActorId === 'object' && currentUserOrActorId !== null) {
+      assertLocationAccess(currentUserOrActorId, log.locationId);
+    }
+    const actorId = typeof currentUserOrActorId === 'object' ? (currentUserOrActorId.id || 'system') : currentUserOrActorId;
 
     const newTimestamp = dto.actualIn ? new Date(dto.actualIn) : dto.actualOut ? new Date(dto.actualOut) : log.timestamp;
 
@@ -324,11 +371,16 @@ export class AttendanceService {
     };
   }
 
-  async approveOvertime(id: string, actorId: string, ipAddress?: string) {
+  async approveOvertime(id: string, currentUserOrActorId: any, ipAddress?: string) {
     const log = await this.prisma.attendanceLog.findUnique({ where: { id } });
     if (!log) {
       throw new NotFoundException(`Attendance log ${id} not found.`);
     }
+
+    if (typeof currentUserOrActorId === 'object' && currentUserOrActorId !== null) {
+      assertLocationAccess(currentUserOrActorId, log.locationId);
+    }
+    const actorId = typeof currentUserOrActorId === 'object' ? (currentUserOrActorId.id || 'system') : currentUserOrActorId;
 
     const updated = await this.prisma.attendanceLog.update({
       where: { id },

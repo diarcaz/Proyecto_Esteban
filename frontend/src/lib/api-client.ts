@@ -71,8 +71,10 @@ export const attendanceApi = {
   },
   kioskClock: (data: { employee_number: string; pin_code: string; location_code: string; type: string; photo_url?: string; device_info?: any }) =>
     request<any>('/attendance/kiosk-clock', { method: 'POST', body: JSON.stringify(data) }),
-  clock: (data: { user_id: string; location_id: string; type: string; method?: string; device_info?: any }) =>
+  clock: (data: { user_id?: string; location_id: string; type: string; method?: string; device_info?: any }) =>
     request<any>('/attendance/clock', { method: 'POST', body: JSON.stringify(data) }),
+  adminClock: (data: { user_id: string; location_id: string; type: string; method?: string; device_info?: any }) =>
+    request<any>('/attendance/admin-clock', { method: 'POST', body: JSON.stringify(data) }),
   adjustPunch: (id: string, data: { actualIn?: string; actualOut?: string }) =>
     request<any>(`/attendance/punch/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   approveOvertime: (id: string) =>
