@@ -25,6 +25,10 @@ import { TenantGuard } from '@adapters/guards/tenant.guard';
 import { PermissionsGuard } from '@adapters/guards/permissions.guard';
 import { NotificationsGateway } from '@infrastructure/notifications/notifications.gateway';
 
+import { WorkShiftService } from '@application/services/work-shift.service';
+import { TimeCorrectionService } from '@application/services/time-correction.service';
+import { TimeCorrectionController } from '@adapters/controllers/time-correction.controller';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -42,6 +46,7 @@ import { NotificationsGateway } from '@infrastructure/notifications/notification
   controllers: [
     HealthController,
     AttendanceController,
+    TimeCorrectionController,
     ReportsController,
     StaffController,
     LocationController,
@@ -51,6 +56,8 @@ import { NotificationsGateway } from '@infrastructure/notifications/notification
   providers: [
     PrismaService,
     AuthorizationService,
+    WorkShiftService,
+    TimeCorrectionService,
     AttendanceService,
     ReportsService,
     StaffService,

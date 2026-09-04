@@ -1,6 +1,7 @@
-import { Injectable, BadRequestException, UnauthorizedException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, UnauthorizedException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '@infrastructure/persistence/prisma/prisma.service';
 import { RedisService } from '@infrastructure/cache/redis.service';
+import { WorkShiftService } from './work-shift.service';
 import { assertLocationAccess } from '@infrastructure/auth/location-access.util';
 import { StandardClockDto, KioskClockDto, PunchQueryDto } from '@adapters/dtos/attendance.dtos';
 import { AttendanceType, AttendanceStatus, AttendanceMethod } from '@domain/entities/attendance-log.entity';
@@ -11,6 +12,7 @@ export class AttendanceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
+    private readonly workShiftService: WorkShiftService,
   ) {}
 
   async processStandardClock(userId: string, dto: StandardClockDto) {
@@ -139,193 +141,16 @@ export class AttendanceService {
     deviceInfo?: Record<string, any>,
     locationCoordinates?: { latitude: number; longitude: number; accuracy?: number },
   ) {
-    const latestLog = await this.prisma.attendanceLog.findFirst({
-      where: { userId },
-      orderBy: { timestamp: 'desc' },
-    });
-
-    this.validateStateTransition(latestLog?.punchType as AttendanceType | null, type);
-
-    const searchWindowStart = new Date(timestamp.getTime() - 24 * 60 * 60 * 1000);
-    const searchWindowEnd = new Date(timestamp.getTime() + 12 * 60 * 60 * 1000);
-
-    const activeSchedule = await this.prisma.shiftSchedule.findFirst({
-      where: {
-        userId,
-        scheduledIn: { gte: searchWindowStart, lte: searchWindowEnd },
-      },
-      include: { shift: true },
-      orderBy: { scheduledIn: 'desc' },
-    });
-
-    let punchStatus: AttendanceStatus = AttendanceStatus.ON_TIME;
-    let graceMins = 15;
-
-    if (activeSchedule?.shift?.gracePeriodMins) {
-      graceMins = activeSchedule.shift.gracePeriodMins;
-    }
-
-    if (activeSchedule && type === AttendanceType.CLOCK_IN) {
-      const graceTime = new Date(activeSchedule.scheduledIn.getTime() + graceMins * 60 * 1000);
-      if (timestamp > graceTime) {
-        punchStatus = AttendanceStatus.LATE;
-      }
-    } else if (activeSchedule && type === AttendanceType.CLOCK_OUT) {
-      if (timestamp < activeSchedule.scheduledOut) {
-        punchStatus = AttendanceStatus.EARLY_LEAVE;
-      }
-    }
-
-    let calculatedHours: number | null = null;
-    let takenLunch = false;
-    let isOvertime = false;
-
-    if (type === AttendanceType.CLOCK_OUT) {
-      const latestClockIn = await this.prisma.attendanceLog.findFirst({
-        where: {
-          userId,
-          punchType: AttendanceType.CLOCK_IN as any,
-          timestamp: { lte: timestamp },
-        },
-        orderBy: { timestamp: 'desc' },
-      });
-
-      if (latestClockIn) {
-        const currentCycleLogs = await this.prisma.attendanceLog.findMany({
-          where: {
-            userId,
-            timestamp: { gte: latestClockIn.timestamp, lte: timestamp },
-          },
-          orderBy: { timestamp: 'asc' },
-        });
-
-        const lunch1Start = currentCycleLogs.find((l) => l.punchType === AttendanceType.LUNCH_START);
-        const lunch1End = currentCycleLogs.find((l) => l.punchType === AttendanceType.LUNCH_END);
-        let lunch1Ms = 0;
-
-        if (lunch1Start && lunch1End) {
-          lunch1Ms = Math.max(0, lunch1End.timestamp.getTime() - lunch1Start.timestamp.getTime());
-        }
-
-        const lunch2Start = currentCycleLogs.find((l) => l.punchType === AttendanceType.LUNCH2_START);
-        const lunch2End = currentCycleLogs.find((l) => l.punchType === AttendanceType.LUNCH2_END);
-        let lunch2Ms = 0;
-
-        if (lunch2Start && lunch2End) {
-          lunch2Ms = Math.max(0, lunch2End.timestamp.getTime() - lunch2Start.timestamp.getTime());
-        }
-
-        const grossMs = timestamp.getTime() - latestClockIn.timestamp.getTime();
-        const totalLunchMs = lunch1Ms + lunch2Ms;
-        takenLunch = totalLunchMs > 0;
-
-        const netMs = Math.max(0, grossMs - totalLunchMs);
-        const netHours = parseFloat((netMs / (1000 * 60 * 60)).toFixed(2));
-
-        calculatedHours = netHours;
-        isOvertime = netHours > 8.0;
-        if (isOvertime) {
-          punchStatus = AttendanceStatus.OVERTIME;
-        }
-      }
-    }
-
-    const log = await this.prisma.attendanceLog.create({
-      data: {
-        userId,
-        locationId,
-        shiftScheduleId: activeSchedule?.id || null,
-        punchType: type as any,
-        punchMethod: method as any,
-        timestamp,
-        actualTimestamp: timestamp,
-        deviceInfo: deviceInfo as any,
-        locationCoordinates: locationCoordinates as any,
-        takenLunch,
-        calculatedHours: calculatedHours !== null ? calculatedHours : null,
-        isOvertime,
-        status: punchStatus as any,
-      },
-    });
-
-    await this.prisma.auditLog.create({
-      data: {
-        actorId: userId,
-        action: `ATTENDANCE_PUNCH_${type}`,
-        targetEntity: 'AttendanceLog',
-        details: {
-          logId: log.id,
-          locationId,
-          method,
-          calculatedHours,
-          status: punchStatus,
-        },
-      },
-    });
-
-    return log;
-  }
-
-  private validateStateTransition(previousType: AttendanceType | null, nextType: AttendanceType) {
-    if (!previousType || previousType === AttendanceType.CLOCK_OUT) {
-      if (nextType !== AttendanceType.CLOCK_IN) {
-        throw new BadRequestException(`Invalid punch sequence. Must perform CLOCK_IN before ${nextType}.`);
-      }
-      return;
-    }
-
-    if (previousType === AttendanceType.CLOCK_IN) {
-      if (
-        nextType !== AttendanceType.LUNCH_START &&
-        nextType !== AttendanceType.LUNCH2_START &&
-        nextType !== AttendanceType.CLOCK_OUT
-      ) {
-        throw new BadRequestException(
-          `Invalid punch sequence after CLOCK_IN. Expected LUNCH_START, LUNCH2_START or CLOCK_OUT, got ${nextType}.`,
-        );
-      }
-      return;
-    }
-
-    if (previousType === AttendanceType.LUNCH_START) {
-      if (nextType !== AttendanceType.LUNCH_END) {
-        throw new BadRequestException(`Invalid punch sequence. Must perform LUNCH_END after LUNCH_START.`);
-      }
-      return;
-    }
-
-    if (previousType === AttendanceType.LUNCH_END) {
-      if (
-        nextType !== AttendanceType.CLOCK_OUT &&
-        nextType !== AttendanceType.LUNCH_START &&
-        nextType !== AttendanceType.LUNCH2_START
-      ) {
-        throw new BadRequestException(
-          `Invalid punch sequence after LUNCH_END. Expected LUNCH2_START or CLOCK_OUT, got ${nextType}.`,
-        );
-      }
-      return;
-    }
-
-    if (previousType === AttendanceType.LUNCH2_START) {
-      if (nextType !== AttendanceType.LUNCH2_END) {
-        throw new BadRequestException(`Invalid punch sequence. Must perform LUNCH2_END after LUNCH2_START.`);
-      }
-      return;
-    }
-
-    if (previousType === AttendanceType.LUNCH2_END) {
-      if (
-        nextType !== AttendanceType.CLOCK_OUT &&
-        nextType !== AttendanceType.LUNCH_START &&
-        nextType !== AttendanceType.LUNCH2_START
-      ) {
-        throw new BadRequestException(
-          `Invalid punch sequence after LUNCH2_END. Expected CLOCK_OUT, got ${nextType}.`,
-        );
-      }
-      return;
-    }
+    const result = await this.workShiftService.processPunchSequence(
+      userId,
+      locationId,
+      type,
+      method,
+      timestamp,
+      deviceInfo,
+      locationCoordinates,
+    );
+    return (result as any).log || result;
   }
 
   async adjustPunchTime(id: string, dto: { actualIn?: string; actualOut?: string }, currentUserOrActorId: any, ipAddress?: string) {

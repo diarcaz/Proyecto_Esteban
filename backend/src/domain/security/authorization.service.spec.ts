@@ -1,6 +1,9 @@
 import * as assert from 'assert';
 import { AuthorizationService, AuthUserContext } from './authorization.service';
 import { Permission } from '../permissions/permission.enum';
+import { runRouteGuardSecurityTests } from './route-guard-security.spec';
+import { runStaffServiceSecurityTests } from './staff-service-security.spec';
+import { runWorkShiftServiceTests } from './work-shift-service.spec';
 
 export function runAuthorizationTests() {
   const authzService = new AuthorizationService();
@@ -107,4 +110,12 @@ export function runAuthorizationTests() {
 
 if (require.main === module) {
   runAuthorizationTests();
+  Promise.all([
+    runRouteGuardSecurityTests(),
+    runStaffServiceSecurityTests(),
+    runWorkShiftServiceTests(),
+  ]).catch((err) => {
+    console.error('❌ SECURITY TEST FAILURE:', err);
+    process.exit(1);
+  });
 }

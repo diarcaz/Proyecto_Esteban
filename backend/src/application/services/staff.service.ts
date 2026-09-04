@@ -6,34 +6,57 @@ import { Permission } from '@domain/permissions/permission.enum';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 
-const USER_SAFE_SELECT = {
-  id: true,
-  companyId: true,
-  employeeNumber: true,
-  firstName: true,
-  lastName: true,
-  email: true,
-  role: true,
-  status: true,
-  jobPositionCode: true,
-  hourlyRate: true,
-  preferredLanguage: true,
-  createdAt: true,
-  updatedAt: true,
-  assignments: {
-    select: {
-      locationId: true,
-      location: { select: { id: true, name: true, locationCode: true, companyId: true } },
-    },
-  },
-};
-
 @Injectable()
 export class StaffService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly authzService: AuthorizationService,
   ) {}
+
+  /**
+   * Helper to construct Prisma select clause with query-level financial field protection.
+   * If user lacks VIEW_PAY_RATE permission, hourlyRate is excluded directly from the Prisma SQL query.
+   */
+  private getStaffSelect(canViewPayRate: boolean) {
+    const now = new Date();
+    return {
+      id: true,
+      companyId: true,
+      employeeNumber: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      role: true,
+      status: true,
+      jobPositionCode: true,
+      hourlyRate: canViewPayRate,
+      preferredLanguage: true,
+      createdAt: true,
+      updatedAt: true,
+      assignments: {
+        select: {
+          locationId: true,
+          location: { select: { id: true, name: true, locationCode: true, companyId: true } },
+        },
+      },
+      employeeAssignments: {
+        where: {
+          active: true,
+          effectiveFrom: { lte: now },
+          OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: now } }],
+        },
+        select: {
+          id: true,
+          propertyId: true,
+          property: { select: { id: true, name: true, locationCode: true, companyId: true } },
+          departmentId: true,
+          department: { select: { id: true, name: true, deptCode: true } },
+          positionId: true,
+          position: { select: { id: true, title: true, code: true } },
+        },
+      },
+    };
+  }
 
   async findAll(allowedLocationIds?: string[], currentUser?: any) {
     const where: any = { status: 'ACTIVE' };
@@ -43,36 +66,91 @@ export class StaffService {
       where.companyId = currentUser.companyId;
     }
 
-    // 2. Enforce Property isolation
-    if (allowedLocationIds && allowedLocationIds.length > 0) {
-      where.assignments = {
-        some: {
-          locationId: { in: allowedLocationIds },
-        },
-      };
-    } else if (currentUser && currentUser.role !== 'SUPER_ADMIN' && currentUser.role !== 'OWNER' && currentUser.role !== 'CLIENT_ADMIN') {
-      const userAssigned = currentUser.assignedLocationIds || [];
-      where.assignments = {
-        some: {
-          locationId: { in: userAssigned },
-        },
-      };
+    // 2. Resolve server-derived authorized property IDs vs client-provided requested allowedLocationIds
+    let isGlobalTenantView = false;
+    let authorizedPropertyIds: string[] = [];
+
+    if (!currentUser || currentUser.role === 'SUPER_ADMIN') {
+      isGlobalTenantView = true;
+    } else if (currentUser.role === 'OWNER' || currentUser.role === 'CLIENT_ADMIN') {
+      isGlobalTenantView = true;
+    } else {
+      const assigned = currentUser.assignedLocationIds || [];
+      const propAccess = (currentUser.propertyAccess || []).map((pa: any) => pa.propertyId);
+      authorizedPropertyIds = Array.from(new Set([...assigned, ...propAccess]));
     }
+
+    let effectivePropertyIds: string[] | null = null;
+
+    if (allowedLocationIds && allowedLocationIds.length > 0) {
+      if (isGlobalTenantView) {
+        effectivePropertyIds = allowedLocationIds;
+      } else {
+        // CRITICAL INVARIANT: Intersect requested IDs with server-derived authorized IDs
+        effectivePropertyIds = allowedLocationIds.filter((id) => authorizedPropertyIds.includes(id));
+      }
+    } else if (!isGlobalTenantView) {
+      effectivePropertyIds = authorizedPropertyIds;
+    }
+
+    // 3. If effective property set is empty for a restricted user, return empty array immediately
+    if (effectivePropertyIds !== null && effectivePropertyIds.length === 0) {
+      return [];
+    }
+
+    // 4. Apply dual assignment matching (UserLocationAssignment + active EmployeeAssignment)
+    if (effectivePropertyIds !== null) {
+      const now = new Date();
+      where.OR = [
+        {
+          assignments: {
+            some: {
+              locationId: { in: effectivePropertyIds },
+            },
+          },
+        },
+        {
+          employeeAssignments: {
+            some: {
+              propertyId: { in: effectivePropertyIds },
+              active: true,
+              effectiveFrom: { lte: now },
+              OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: now } }],
+            },
+          },
+        },
+      ];
+    }
+
+    const canViewPayRate = currentUser
+      ? (isGlobalTenantView
+          ? this.authzService.hasPermission(currentUser, Permission.VIEW_PAY_RATE)
+          : effectivePropertyIds!.some((pId) => this.authzService.hasPermission(currentUser, Permission.VIEW_PAY_RATE, pId)))
+      : true;
 
     const users = await this.prisma.user.findMany({
       where,
       select: {
-        ...USER_SAFE_SELECT,
+        ...this.getStaffSelect(canViewPayRate),
         pinCodeHash: true,
       },
       orderBy: { firstName: 'asc' },
     });
 
     return users.map((u) => {
-      const { pinCodeHash, ...safeUser } = u;
-      const primaryLocId = u.assignments?.[0]?.location?.id || null;
+      const { pinCodeHash, ...rawUser } = u;
 
-      // Apply service-level financial masking (strips hourlyRate if unauthorized)
+      // Filter assignment metadata so unauthorized property assignments are removed from response DTO
+      const safeUser = this.authzService.filterUserAssignments(
+        rawUser,
+        currentUser,
+        effectivePropertyIds || undefined,
+      );
+
+      const empPropIds = this.authzService.getEmployeePropertyIds(u);
+      const primaryLocId = empPropIds[0] || null;
+
+      // Apply service-level financial masking (defense-in-depth)
       const masked = this.authzService.maskFinancialFields(safeUser, currentUser, primaryLocId || undefined);
 
       return {
@@ -86,29 +164,53 @@ export class StaffService {
   }
 
   async findOne(id: string, currentUser?: any) {
+    const now = new Date();
+    const existing = await this.prisma.user.findUnique({
+      where: { id },
+      include: {
+        assignments: { select: { locationId: true } },
+        employeeAssignments: {
+          where: {
+            active: true,
+            effectiveFrom: { lte: now },
+            OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: now } }],
+          },
+          select: { propertyId: true },
+        },
+      },
+    });
+    if (!existing) throw new NotFoundException(`Staff member ${id} not found.`);
+
+    let sharedPropIds: string[] = [];
+    if (currentUser) {
+      // Assert company isolation & assert actor property authorization across employee properties
+      sharedPropIds = this.authzService.assertCanAccessEmployee(currentUser, existing);
+    } else {
+      sharedPropIds = this.authzService.getEmployeePropertyIds(existing);
+    }
+
+    const canViewPayRate = currentUser
+      ? (sharedPropIds.length > 0
+          ? sharedPropIds.some((pId) => this.authzService.hasPermission(currentUser, Permission.VIEW_PAY_RATE, pId))
+          : this.authzService.hasPermission(currentUser, Permission.VIEW_PAY_RATE))
+      : true;
+
     const user = await this.prisma.user.findUnique({
       where: { id },
       select: {
-        ...USER_SAFE_SELECT,
+        ...this.getStaffSelect(canViewPayRate),
         pinCodeHash: true,
       },
     });
     if (!user) throw new NotFoundException(`Staff member ${id} not found.`);
 
-    // Enforce Company isolation
-    if (currentUser) {
-      this.authzService.assertCompanyAccess(currentUser, user.companyId);
+    const { pinCodeHash, ...rawUser } = user;
 
-      const locationIds = user.assignments?.map((a: any) => a.locationId) || [];
-      const primaryLocId = locationIds[0];
-      if (primaryLocId) {
-        this.authzService.assertPropertyAccess(currentUser, primaryLocId, user.companyId);
-      }
-    }
+    // Filter assignment metadata so unauthorized property assignments are removed from response DTO
+    const safeUser = this.authzService.filterUserAssignments(rawUser, currentUser, sharedPropIds);
 
-    const { pinCodeHash, ...safeUser } = user;
-    const primaryLocId = user.assignments?.[0]?.location?.id || undefined;
-    const masked = this.authzService.maskFinancialFields(safeUser, currentUser, primaryLocId);
+    const primarySharedLocId = sharedPropIds[0] || undefined;
+    const masked = this.authzService.maskFinancialFields(safeUser, currentUser, primarySharedLocId);
 
     return {
       ...masked,
@@ -119,9 +221,10 @@ export class StaffService {
 
   /**
    * Explicit action endpoint to retrieve employee's decrypted 6-digit PIN.
-   * Requires VIEW_EMPLOYEE_PIN permission + Company/Property authorization.
+   * Requires VIEW_EMPLOYEE_PIN permission on at least one shared Property.
    */
   async getDecryptedPin(id: string, currentUser: any) {
+    const now = new Date();
     const user = await this.prisma.user.findUnique({
       where: { id },
       select: {
@@ -132,25 +235,41 @@ export class StaffService {
         lastName: true,
         pinCodeEncrypted: true,
         assignments: { select: { locationId: true } },
+        employeeAssignments: {
+          where: {
+            active: true,
+            effectiveFrom: { lte: now },
+            OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: now } }],
+          },
+          select: { propertyId: true },
+        },
       },
     });
     if (!user) throw new NotFoundException(`Staff member ${id} not found.`);
 
-    const empLocationIds = user.assignments?.map((a: any) => a.locationId) || [];
-    const primaryLocId = empLocationIds[0];
+    // 1. Assert Company isolation & get shared authorized properties
+    const sharedPropIds = this.authzService.assertCanAccessEmployee(currentUser, user);
 
-    // Assert Company isolation & Property authorization
-    this.authzService.assertCompanyAccess(currentUser, user.companyId);
-    if (primaryLocId) {
-      this.authzService.assertPropertyAccess(currentUser, primaryLocId, user.companyId);
+    // 2. Determine which shared property grants VIEW_EMPLOYEE_PIN
+    let authorizingPropId: string | undefined = undefined;
+
+    if (currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'OWNER' || currentUser.role === 'CLIENT_ADMIN') {
+      authorizingPropId = sharedPropIds[0] || undefined;
+    } else {
+      authorizingPropId = sharedPropIds.find((pId) =>
+        this.authzService.hasPermission(currentUser, Permission.VIEW_EMPLOYEE_PIN, pId),
+      );
     }
 
-    // Assert VIEW_EMPLOYEE_PIN permission
-    this.authzService.assertPermission(currentUser, Permission.VIEW_EMPLOYEE_PIN, primaryLocId);
+    if (!authorizingPropId && currentUser.role !== 'SUPER_ADMIN' && currentUser.role !== 'OWNER' && currentUser.role !== 'CLIENT_ADMIN') {
+      throw new ForbiddenException(
+        `Required permission '${Permission.VIEW_EMPLOYEE_PIN}' is missing for employee ${user.employeeNumber} in authorized properties.`,
+      );
+    }
 
     const decryptedPin = decryptPin(user.pinCodeEncrypted);
 
-    // Security Audit Log (Audits access WITHOUT logging the raw PIN)
+    // Security Audit Log (audits using the specific authorizing property ID)
     await this.prisma.auditLog.create({
       data: {
         actorId: currentUser.id,
@@ -159,7 +278,7 @@ export class StaffService {
         details: {
           targetEmployeeNumber: user.employeeNumber,
           targetName: `${user.firstName} ${user.lastName}`,
-          propertyId: primaryLocId || null,
+          authorizingPropertyId: authorizingPropId || null,
         },
       },
     });
@@ -175,13 +294,14 @@ export class StaffService {
 
   /**
    * Explicit action endpoint to reset/replace an employee's 6-digit PIN.
-   * Requires RESET_EMPLOYEE_PIN permission + Company/Property authorization.
+   * Requires RESET_EMPLOYEE_PIN permission on at least one shared Property.
    */
   async resetPin(id: string, newPinCode: string, currentUser: any) {
     if (!newPinCode || newPinCode.length !== 6 || !/^\d{6}$/.exec(newPinCode)) {
       throw new BadRequestException('PIN code must be exactly 6 digits.');
     }
 
+    const now = new Date();
     const user = await this.prisma.user.findUnique({
       where: { id },
       select: {
@@ -191,21 +311,37 @@ export class StaffService {
         firstName: true,
         lastName: true,
         assignments: { select: { locationId: true } },
+        employeeAssignments: {
+          where: {
+            active: true,
+            effectiveFrom: { lte: now },
+            OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: now } }],
+          },
+          select: { propertyId: true },
+        },
       },
     });
     if (!user) throw new NotFoundException(`Staff member ${id} not found.`);
 
-    const empLocationIds = user.assignments?.map((a: any) => a.locationId) || [];
-    const primaryLocId = empLocationIds[0];
+    // 1. Assert Company isolation & get shared authorized properties
+    const sharedPropIds = this.authzService.assertCanAccessEmployee(currentUser, user);
 
-    // Assert Company isolation & Property authorization
-    this.authzService.assertCompanyAccess(currentUser, user.companyId);
-    if (primaryLocId) {
-      this.authzService.assertPropertyAccess(currentUser, primaryLocId, user.companyId);
+    // 2. Determine which shared property grants RESET_EMPLOYEE_PIN
+    let authorizingPropId: string | undefined = undefined;
+
+    if (currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'OWNER' || currentUser.role === 'CLIENT_ADMIN') {
+      authorizingPropId = sharedPropIds[0] || undefined;
+    } else {
+      authorizingPropId = sharedPropIds.find((pId) =>
+        this.authzService.hasPermission(currentUser, Permission.RESET_EMPLOYEE_PIN, pId),
+      );
     }
 
-    // Assert RESET_EMPLOYEE_PIN permission
-    this.authzService.assertPermission(currentUser, Permission.RESET_EMPLOYEE_PIN, primaryLocId);
+    if (!authorizingPropId && currentUser.role !== 'SUPER_ADMIN' && currentUser.role !== 'OWNER' && currentUser.role !== 'CLIENT_ADMIN') {
+      throw new ForbiddenException(
+        `Required permission '${Permission.RESET_EMPLOYEE_PIN}' is missing for employee ${user.employeeNumber} in authorized properties.`,
+      );
+    }
 
     const pinCodeHash = await bcrypt.hash(newPinCode, 10);
     const pinCodeEncrypted = encryptPin(newPinCode);
@@ -227,7 +363,7 @@ export class StaffService {
         details: {
           targetEmployeeNumber: user.employeeNumber,
           targetName: `${user.firstName} ${user.lastName}`,
-          propertyId: primaryLocId || null,
+          authorizingPropertyId: authorizingPropId || null,
         },
       },
     });
@@ -259,6 +395,10 @@ export class StaffService {
     const pinCodeHash = dto.pinCode ? await bcrypt.hash(dto.pinCode, 10) : null;
     const pinCodeEncrypted = dto.pinCode ? encryptPin(dto.pinCode) : null;
 
+    const canViewPayRate = currentUser
+      ? this.authzService.hasPermission(currentUser, Permission.VIEW_PAY_RATE, dto.locationId)
+      : true;
+
     const user = await this.prisma.user.create({
       data: {
         companyId: targetCompanyId,
@@ -275,7 +415,7 @@ export class StaffService {
         permissions: dto.permissions || [],
         status: 'ACTIVE',
       },
-      select: USER_SAFE_SELECT,
+      select: this.getStaffSelect(canViewPayRate),
     });
 
     if (dto.locationId) {
@@ -309,6 +449,7 @@ export class StaffService {
   }
 
   async update(id: string, dto: any, currentUser?: any) {
+    const now = new Date();
     const user = await this.prisma.user.findUnique({
       where: { id },
       select: {
@@ -318,25 +459,37 @@ export class StaffService {
         pinCodeHash: true,
         pinCodeEncrypted: true,
         assignments: { select: { locationId: true } },
+        employeeAssignments: {
+          where: {
+            active: true,
+            effectiveFrom: { lte: now },
+            OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: now } }],
+          },
+          select: { propertyId: true },
+        },
       },
     });
     if (!user) throw new NotFoundException(`Staff member ${id} not found.`);
 
+    let sharedPropIds: string[] = [];
     if (currentUser) {
-      this.authzService.assertCompanyAccess(currentUser, user.companyId);
+      sharedPropIds = this.authzService.assertCanAccessEmployee(currentUser, user);
       this.authzService.assertPrivilegeEscalationSafety(currentUser, dto.role, dto.permissions);
 
-      const locationIds = user.assignments?.map((a: any) => a.locationId) || [];
-      if (locationIds[0]) {
-        this.authzService.assertPropertyAccess(currentUser, locationIds[0], user.companyId);
-      }
       if (dto.locationId) {
         this.authzService.assertPropertyAccess(currentUser, dto.locationId, user.companyId);
       }
+    } else {
+      sharedPropIds = this.authzService.getEmployeePropertyIds(user);
     }
 
     const pinCodeHash = dto.pinCode ? await bcrypt.hash(dto.pinCode, 10) : user.pinCodeHash;
     const pinCodeEncrypted = dto.pinCode ? encryptPin(dto.pinCode) : user.pinCodeEncrypted;
+
+    const primaryLoc = dto.locationId || sharedPropIds[0];
+    const canViewPayRate = currentUser
+      ? this.authzService.hasPermission(currentUser, Permission.VIEW_PAY_RATE, primaryLoc)
+      : true;
 
     const updated = await this.prisma.user.update({
       where: { id },
@@ -350,7 +503,7 @@ export class StaffService {
         pinCodeEncrypted,
         preferredLanguage: dto.preferredLanguage ?? undefined,
       },
-      select: USER_SAFE_SELECT,
+      select: this.getStaffSelect(canViewPayRate),
     });
 
     if (dto.locationId) {
@@ -374,8 +527,8 @@ export class StaffService {
       });
     }
 
-    const primaryLocId = updated.assignments?.[0]?.location?.id || undefined;
-    const masked = this.authzService.maskFinancialFields(updated, currentUser, primaryLocId);
+    const safeUser = this.authzService.filterUserAssignments(updated, currentUser, sharedPropIds);
+    const masked = this.authzService.maskFinancialFields(safeUser, currentUser, primaryLoc);
 
     return {
       ...masked,
@@ -385,6 +538,7 @@ export class StaffService {
   }
 
   async remove(id: string, currentUser?: any) {
+    const now = new Date();
     const user = await this.prisma.user.findUnique({
       where: { id },
       select: {
@@ -393,16 +547,20 @@ export class StaffService {
         firstName: true,
         lastName: true,
         assignments: { select: { locationId: true } },
+        employeeAssignments: {
+          where: {
+            active: true,
+            effectiveFrom: { lte: now },
+            OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: now } }],
+          },
+          select: { propertyId: true },
+        },
       },
     });
     if (!user) throw new NotFoundException(`Staff member ${id} not found.`);
 
     if (currentUser) {
-      this.authzService.assertCompanyAccess(currentUser, user.companyId);
-      const locationIds = user.assignments?.map((a: any) => a.locationId) || [];
-      if (locationIds[0]) {
-        this.authzService.assertPropertyAccess(currentUser, locationIds[0], user.companyId);
-      }
+      this.authzService.assertCanAccessEmployee(currentUser, user);
     }
 
     await this.prisma.user.update({ where: { id }, data: { status: 'TERMINATED' } });

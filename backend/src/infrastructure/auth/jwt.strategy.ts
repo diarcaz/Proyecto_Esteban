@@ -29,11 +29,20 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
+    const now = new Date();
     const user = await (this.prisma as any).user.findUnique({
       where: { id: payload.sub },
       include: {
         assignments: {
           select: { locationId: true },
+        },
+        employeeAssignments: {
+          where: {
+            active: true,
+            effectiveFrom: { lte: now },
+            OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: now } }],
+          },
+          select: { propertyId: true },
         },
         propertyAccess: {
           select: {
@@ -49,7 +58,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Account inactive or user not found');
     }
 
-    const assignedLocationIds = (user.assignments || []).map((a: any) => a.locationId);
+    const legacyLocationIds = (user.assignments || []).map((a: any) => a.locationId);
+    const activeEmpPropertyIds = (user.employeeAssignments || []).map((ea: any) => ea.propertyId);
+    const assignedLocationIds = Array.from(new Set([...legacyLocationIds, ...activeEmpPropertyIds]));
 
     return {
       id: user.id,

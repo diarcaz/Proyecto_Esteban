@@ -181,4 +181,97 @@ export class AuthorizationService {
 
     return result;
   }
+
+  /**
+   * Resolves all active property IDs for an employee by combining:
+   * 1. Legacy UserLocationAssignment.locationId
+   * 2. Active EmployeeAssignment.propertyId (active === true, effectiveFrom <= now, effectiveUntil >= now || null)
+   */
+  getEmployeePropertyIds(employeeRecord: any): string[] {
+    if (!employeeRecord) return [];
+    const now = new Date();
+
+    const legacyIds: string[] = (employeeRecord.assignments || [])
+      .map((a: any) => a.locationId || a.location?.id)
+      .filter(Boolean);
+
+    const activeEmpAssignmentIds: string[] = (employeeRecord.employeeAssignments || [])
+      .filter((ea: any) => {
+        if (ea.active === false) return false;
+        if (ea.effectiveFrom && new Date(ea.effectiveFrom) > now) return false;
+        if (ea.effectiveUntil && new Date(ea.effectiveUntil) < now) return false;
+        return true;
+      })
+      .map((ea: any) => ea.propertyId || ea.property?.id)
+      .filter(Boolean);
+
+    return Array.from(new Set([...legacyIds, ...activeEmpAssignmentIds]));
+  }
+
+  /**
+   * Calculates the intersection between the employee's active properties and the requesting actor's authorized properties.
+   */
+  getSharedAuthorizedPropertyIds(
+    actor?: AuthUserContext,
+    employeePropertyIds: string[] = [],
+    employeeCompanyId?: string | null,
+  ): string[] {
+    if (!actor) return [];
+    if (actor.role === 'SUPER_ADMIN') return employeePropertyIds;
+
+    // Enforce company isolation first
+    if (employeeCompanyId && actor.companyId && actor.companyId !== employeeCompanyId) {
+      return [];
+    }
+
+    if (actor.role === 'OWNER' || actor.role === 'CLIENT_ADMIN') {
+      return employeePropertyIds;
+    }
+
+    return employeePropertyIds.filter((pId) => this.canAccessProperty(actor, pId, employeeCompanyId));
+  }
+
+  /**
+   * Asserts that the requesting actor has property access to at least one of the employee's active properties.
+   * Throws ForbiddenException if no shared authorized property exists.
+   */
+  assertCanAccessEmployee(actor: AuthUserContext, employeeRecord: any): string[] {
+    this.assertCompanyAccess(actor, employeeRecord.companyId);
+
+    const empPropertyIds = this.getEmployeePropertyIds(employeeRecord);
+    const sharedPropIds = this.getSharedAuthorizedPropertyIds(actor, empPropertyIds, employeeRecord.companyId);
+
+    if (sharedPropIds.length === 0 && actor.role !== 'SUPER_ADMIN' && actor.role !== 'OWNER' && actor.role !== 'CLIENT_ADMIN') {
+      throw new ForbiddenException(
+        `Access denied: You do not have property access authorization for any of employee ${employeeRecord.employeeNumber || employeeRecord.id || ''}'s assigned properties.`,
+      );
+    }
+
+    return sharedPropIds;
+  }
+
+  /**
+   * Filters an employee's assignment relations in response objects so non-SUPER_ADMIN / non-OWNER users
+   * receive ONLY assignment records for properties they are authorized to view.
+   */
+  filterUserAssignments<T extends Record<string, any>>(userRecord: T, actor?: AuthUserContext, authorizedPropertyIds?: string[]): T {
+    if (!userRecord || typeof userRecord !== 'object') return userRecord;
+    if (!actor || actor.role === 'SUPER_ADMIN' || actor.role === 'OWNER' || actor.role === 'CLIENT_ADMIN') {
+      return userRecord;
+    }
+
+    const allowedSet = new Set(authorizedPropertyIds || actor.assignedLocationIds || []);
+
+    const filtered = { ...userRecord } as any;
+
+    if (Array.isArray(filtered.assignments)) {
+      filtered.assignments = filtered.assignments.filter((a: any) => allowedSet.has(a.locationId || a.location?.id));
+    }
+
+    if (Array.isArray(filtered.employeeAssignments)) {
+      filtered.employeeAssignments = filtered.employeeAssignments.filter((ea: any) => allowedSet.has(ea.propertyId || ea.property?.id));
+    }
+
+    return filtered;
+  }
 }
