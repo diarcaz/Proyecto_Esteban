@@ -99,8 +99,9 @@ export class TimeCorrectionService {
     const now = new Date();
 
     return await this.prisma.$transaction(async (tx) => {
-      const updatedRequest = await tx.timeCorrectionRequest.update({
-        where: { id },
+      // Atomic conditional update on status = PENDING
+      const updateRes = await tx.timeCorrectionRequest.updateMany({
+        where: { id, status: 'PENDING' },
         data: {
           status: 'APPROVED',
           effectiveTimestamp: request.requestedTimestamp,
@@ -110,25 +111,90 @@ export class TimeCorrectionService {
         },
       });
 
+      if (updateRes.count === 0) {
+        throw new BadRequestException(`Time correction request ${id} has already been reviewed or does not exist.`);
+      }
+
       // Update effective WorkShift state if linked
       if (request.workShiftId) {
         const shift = await tx.workShift.findUnique({ where: { id: request.workShiftId } });
         if (shift) {
+          let newEffectiveIn = shift.effectiveClockIn || shift.clockInTimestamp;
+          let newEffectiveOut = shift.effectiveClockOut || shift.clockOutTimestamp;
+
+          if (request.correctionType === 'INCORRECT_CLOCK_IN') {
+            newEffectiveIn = request.requestedTimestamp;
+          } else if (request.correctionType === 'MISSED_CLOCK_OUT' || request.correctionType === 'INCORRECT_CLOCK_OUT') {
+            newEffectiveOut = request.requestedTimestamp;
+          }
+
+          // Validation 1: CLOCK_OUT after CLOCK_IN & Positive duration
+          if (newEffectiveOut && newEffectiveOut.getTime() <= newEffectiveIn.getTime()) {
+            throw new BadRequestException('Invalid correction range: Effective CLOCK_OUT must be after effective CLOCK_IN.');
+          }
+
+          // Validation 2: Active EmployeeAssignment / UserLocationAssignment at effective clock-in time
+          const isAssignedLoc = await tx.userLocationAssignment.findFirst({
+            where: { userId: request.userId, locationId: request.propertyId },
+          });
+          const isAssignedEmp = await tx.employeeAssignment.findFirst({
+            where: {
+              userId: request.userId,
+              propertyId: request.propertyId,
+              active: true,
+              effectiveFrom: { lte: newEffectiveIn },
+              OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: newEffectiveIn } }],
+            },
+          });
+          if (!isAssignedLoc && !isAssignedEmp) {
+            throw new BadRequestException('Invalid correction range: Employee had no active assignment for this property at the requested clock-in time.');
+          }
+
+          // Validation 3: Lunch/break interval bounding
+          const shiftLogs = await tx.attendanceLog.findMany({
+            where: { workShiftId: shift.id },
+          });
+          const breakLogs = shiftLogs.filter((l) =>
+            ['LUNCH_START', 'LUNCH_END', 'LUNCH2_START', 'LUNCH2_END'].includes(l.punchType),
+          );
+          for (const blog of breakLogs) {
+            const blogTime = blog.timestamp.getTime();
+            if (blogTime <= newEffectiveIn.getTime() || (newEffectiveOut && blogTime >= newEffectiveOut.getTime())) {
+              throw new BadRequestException('Invalid correction range: Requested shift interval conflicts with recorded lunch/break punches.');
+            }
+          }
+
+          // Validation 4: Shift overlap protection against other WorkShifts for employee
+          const otherShifts = await tx.workShift.findMany({
+            where: {
+              userId: request.userId,
+              id: { not: shift.id },
+            },
+          });
+
+          for (const os of otherShifts) {
+            const osIn = os.effectiveClockIn || os.clockInTimestamp;
+            const osOut = os.effectiveClockOut || os.clockOutTimestamp || new Date();
+
+            const targetOut = newEffectiveOut || new Date();
+            if (newEffectiveIn < osOut && targetOut > osIn) {
+              throw new BadRequestException('Invalid correction range: Correction causes overlapping WorkShift for employee.');
+            }
+          }
+
           const updateData: any = {};
           if (request.correctionType === 'MISSED_CLOCK_OUT' || request.correctionType === 'INCORRECT_CLOCK_OUT') {
             updateData.effectiveClockOut = request.requestedTimestamp;
             updateData.clockOutTimestamp = shift.clockOutTimestamp || request.requestedTimestamp;
             updateData.status = 'COMPLETED';
 
-            const effectiveIn = shift.effectiveClockIn || shift.clockInTimestamp;
-            const grossMins = Math.max(0, Math.round((request.requestedTimestamp.getTime() - effectiveIn.getTime()) / (1000 * 60)));
+            const grossMins = Math.max(0, Math.round((request.requestedTimestamp.getTime() - newEffectiveIn.getTime()) / (1000 * 60)));
             updateData.regularMinutes = Math.min(grossMins, 480);
             updateData.overtimeMinutes = Math.max(0, grossMins - 480);
           } else if (request.correctionType === 'INCORRECT_CLOCK_IN') {
             updateData.effectiveClockIn = request.requestedTimestamp;
-            const effectiveOut = shift.effectiveClockOut || shift.clockOutTimestamp;
-            if (effectiveOut) {
-              const grossMins = Math.max(0, Math.round((effectiveOut.getTime() - request.requestedTimestamp.getTime()) / (1000 * 60)));
+            if (newEffectiveOut) {
+              const grossMins = Math.max(0, Math.round((newEffectiveOut.getTime() - request.requestedTimestamp.getTime()) / (1000 * 60)));
               updateData.regularMinutes = Math.min(grossMins, 480);
               updateData.overtimeMinutes = Math.max(0, grossMins - 480);
             }
@@ -155,7 +221,7 @@ export class TimeCorrectionService {
         },
       });
 
-      return updatedRequest;
+      return await tx.timeCorrectionRequest.findUnique({ where: { id } });
     });
   }
 
@@ -180,8 +246,8 @@ export class TimeCorrectionService {
 
     const now = new Date();
 
-    const updatedRequest = await this.prisma.timeCorrectionRequest.update({
-      where: { id },
+    const updateRes = await this.prisma.timeCorrectionRequest.updateMany({
+      where: { id, status: 'PENDING' },
       data: {
         status: 'REJECTED',
         reviewedById: currentUser.id,
@@ -189,6 +255,10 @@ export class TimeCorrectionService {
         comments: dto?.comments || null,
       },
     });
+
+    if (updateRes.count === 0) {
+      throw new BadRequestException(`Time correction request ${id} has already been reviewed.`);
+    }
 
     await this.prisma.auditLog.create({
       data: {
@@ -203,7 +273,7 @@ export class TimeCorrectionService {
       },
     });
 
-    return updatedRequest;
+    return await this.prisma.timeCorrectionRequest.findUnique({ where: { id } });
   }
 
   async getCorrectionRequests(currentUser: any, query: any) {

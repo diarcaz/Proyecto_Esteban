@@ -100,6 +100,7 @@ export async function runWorkShiftServiceTests() {
       findUnique: async (args: any) => dbOperationalConfigs.find((c) => c.locationId === args.where.locationId) || null,
     },
     rateConfiguration: {
+      findUnique: async (args: any) => dbRateConfigs.find((rc) => rc.id === args.where.id) || null,
       findFirst: async (args: any) => {
         const { positionId, effectiveFrom } = args.where;
         return dbRateConfigs.find((rc) => {
@@ -109,35 +110,68 @@ export async function runWorkShiftServiceTests() {
           return true;
         }) || null;
       },
+      findMany: async (args: any) => {
+        const { positionId, effectiveFrom } = args.where || {};
+        return dbRateConfigs.filter((rc) => {
+          if (positionId && rc.positionId !== positionId) return false;
+          if (effectiveFrom?.lte && new Date(rc.effectiveFrom) > effectiveFrom.lte) return false;
+          if (rc.effectiveUntil && new Date(rc.effectiveUntil) < effectiveFrom.lte) return false;
+          return true;
+        });
+      },
     },
     workShift: {
       create: async (args: any) => {
+        if (args.data.status === 'OPEN') {
+          const existingOpen = dbWorkShifts.find((s) => s.userId === args.data.userId && s.status === 'OPEN');
+          if (existingOpen) {
+            const err: any = new Error('Unique constraint failed on the fields: (`user_id`) where status = OPEN');
+            err.code = 'P2002';
+            throw err;
+          }
+        }
         const shift = { id: `ws-${idCounter++}`, ...args.data, createdAt: new Date(), updatedAt: new Date() };
         dbWorkShifts.push(shift);
         return shift;
       },
       findFirst: async (args: any) => {
-        const { userId, status, id } = args.where || {};
+        const { userId, status, id, clockInTimestamp } = args.where || {};
         if (id) return dbWorkShifts.find((s) => s.id === id) || null;
         const matches = dbWorkShifts.filter((s) => {
           if (userId && s.userId !== userId) return false;
           if (status && s.status !== status) return false;
+          if (clockInTimestamp?.gte && new Date(s.clockInTimestamp) < clockInTimestamp.gte) return false;
           return true;
         });
         return matches.length > 0 ? matches[matches.length - 1] : null;
       },
-      findMany: async (args: any) => dbWorkShifts,
+      findMany: async (args: any) => {
+        const { userId, id, where } = args || {};
+        const filter = where || args;
+        if (!filter || Object.keys(filter).length === 0) return dbWorkShifts;
+        return dbWorkShifts.filter((s) => {
+          if (filter.userId && s.userId !== filter.userId) return false;
+          if (filter.id?.not && s.id === filter.id.not) return false;
+          if (filter.status && s.status !== filter.status) return false;
+          return true;
+        });
+      },
       findUnique: async (args: any) => {
         const s = dbWorkShifts.find((shift) => shift.id === args.where.id);
         if (!s) return null;
         return {
           ...s,
-          location: { id: s.locationId, companyId: compAlpha },
+          location: { id: s.locationId, companyId: compAlpha, operationalConfig: dbOperationalConfigs.find((c) => c.locationId === s.locationId) || null },
         };
       },
       update: async (args: any) => {
         const shift = dbWorkShifts.find((s) => s.id === args.where.id);
-        if (shift && args.data) Object.assign(shift, args.data);
+        if (shift) {
+          if (args.data.status === 'COMPLETED' && shift.status === 'COMPLETED') {
+            throw new BadRequestException('Invalid punch sequence. Cannot perform CLOCK_OUT on an already completed work shift.');
+          }
+          if (args.data) Object.assign(shift, args.data);
+        }
         return shift;
       },
     },
@@ -184,6 +218,17 @@ export async function runWorkShiftServiceTests() {
         const req = dbTimeCorrectionRequests.find((r) => r.id === args.where.id);
         if (req && args.data) Object.assign(req, args.data);
         return req;
+      },
+      updateMany: async (args: any) => {
+        const { id, status } = args.where || {};
+        let count = 0;
+        for (const r of dbTimeCorrectionRequests) {
+          if ((!id || r.id === id) && (!status || r.status === status)) {
+            Object.assign(r, args.data);
+            count++;
+          }
+        }
+        return { count };
       },
     },
     auditLog: {
@@ -447,7 +492,250 @@ export async function runWorkShiftServiceTests() {
   assert.strictEqual(maskedShift.payRateApplied, undefined, 'TEST 22 FAILED: payRateApplied was exposed to unauthorized caller!');
   assert.strictEqual(maskedShift.billRateApplied, undefined, 'TEST 22 FAILED: billRateApplied was exposed to unauthorized caller!');
 
-  console.log('✅ ALL 22 REAL PHASE 3 WORK SHIFT SECURITY TESTS (TEST 1 - TEST 22) PASSED SUCCESSFULLY!');
+  // =========================================================================
+  // TEST 23: Two concurrent CLOCK_IN attempts create only one WorkShift
+  // =========================================================================
+  dbWorkShifts.length = 0;
+  dbAttendanceLogs.length = 0;
+  const concInTime = new Date('2026-09-05T08:00:00Z');
+
+  const results23 = await Promise.allSettled([
+    workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, concInTime),
+    workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, concInTime),
+  ]);
+
+  const openShifts23 = dbWorkShifts.filter((s) => s.status === 'OPEN');
+  assert.strictEqual(openShifts23.length, 1, 'TEST 23 FAILED: Concurrent CLOCK_IN created multiple open WorkShifts!');
+
+  // =========================================================================
+  // TEST 24: Two concurrent CLOCK_OUT attempts produce only one legitimate completion
+  // =========================================================================
+  const concOutTime = new Date('2026-09-05T17:00:00Z');
+  const results24 = await Promise.allSettled([
+    workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_OUT, AttendanceMethod.KIOSK_PIN, concOutTime),
+    workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_OUT, AttendanceMethod.KIOSK_PIN, concOutTime),
+  ]);
+
+  const fulfilled24 = results24.filter((r) => r.status === 'fulfilled');
+  const rejected24 = results24.filter((r) => r.status === 'rejected');
+  assert.strictEqual(fulfilled24.length, 1, 'TEST 24 FAILED: Expected exactly one successful CLOCK_OUT completion!');
+  assert.strictEqual(rejected24.length, 1, 'TEST 24 FAILED: Concurrent CLOCK_OUT was not cleanly rejected!');
+
+  // =========================================================================
+  // TEST 25: Two concurrent approvals of one TimeCorrectionRequest result in exactly one successful approval
+  // =========================================================================
+  dbWorkShifts.length = 0;
+  dbAttendanceLogs.length = 0;
+  dbTimeCorrectionRequests.length = 0;
+
+  const oldIn = new Date('2026-09-01T08:00:00Z');
+  await workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, oldIn);
+  await workShiftService.checkMissedClockOuts(propA); // Flags as MISSED_CLOCK_OUT
+
+  const tcr25 = await timeCorrectionService.createCorrectionRequest({
+    work_shift_id: dbWorkShifts[0].id,
+    location_id: propA,
+    requested_timestamp: '2026-09-01T17:00:00Z',
+    correction_type: 'MISSED_CLOCK_OUT',
+    reason: 'Forgot clock out',
+  }, { id: 'worker-1', companyId: compAlpha, assignedLocationIds: [propA] });
+
+  const results25 = await Promise.allSettled([
+    timeCorrectionService.approveCorrectionRequest(tcr25.id, { comments: 'Supervisor A' }, supervisorPropA),
+    timeCorrectionService.approveCorrectionRequest(tcr25.id, { comments: 'Supervisor B' }, supervisorPropA),
+  ]);
+
+  const fulfilled25 = results25.filter((r) => r.status === 'fulfilled');
+  const rejected25 = results25.filter((r) => r.status === 'rejected');
+  assert.strictEqual(fulfilled25.length, 1, 'TEST 25 FAILED: Expected exactly one successful approval!');
+  assert.strictEqual(rejected25.length, 1, 'TEST 25 FAILED: Concurrent approval was not cleanly rejected!');
+
+  // =========================================================================
+  // TEST 26: Raw, effective, and rounded timestamps remain distinguishable
+  // =========================================================================
+  const rawPunchTime = new Date('2026-09-05T08:03:00Z');
+  const effectiveTime = new Date('2026-09-05T08:02:00Z');
+  const roundedTime = workShiftService.calculateRoundedTimestamp(effectiveTime, { roundingMinutes: 5, direction: 'NEAREST' });
+
+  assert.strictEqual(rawPunchTime.toISOString(), '2026-09-05T08:03:00.000Z', 'TEST 26 FAILED: Raw time changed');
+  assert.strictEqual(effectiveTime.toISOString(), '2026-09-05T08:02:00.000Z', 'TEST 26 FAILED: Effective time changed');
+  assert.strictEqual(roundedTime.toISOString(), '2026-09-05T08:00:00.000Z', 'TEST 26 FAILED: Rounded calculation failed');
+
+  // =========================================================================
+  // TEST 27: Expired assignment RateConfiguration is not silently used
+  // =========================================================================
+  dbWorkShifts.length = 0;
+  dbAttendanceLogs.length = 0;
+
+  // Add expired pinned rate to assignment
+  dbRateConfigs.push({
+    id: 'rate-expired-pinned',
+    positionId: 'pos-housekeeper',
+    payRate: 30.00,
+    billRate: 40.00,
+    effectiveFrom: new Date('2025-01-01'),
+    effectiveUntil: new Date('2025-12-31'),
+  });
+  dbEmployeeAssignments[0].rateConfigurationId = 'rate-expired-pinned';
+
+  const expRes: any = await workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, new Date('2026-09-05T08:00:00Z'));
+  assert.strictEqual(expRes.shift.payRateApplied, null, 'TEST 27 FAILED: Expired pinned RateConfiguration was silently applied!');
+  dbEmployeeAssignments[0].rateConfigurationId = null; // reset
+
+  // =========================================================================
+  // TEST 28: Overlapping effective RateConfigurations do not result in arbitrary rate selection
+  // =========================================================================
+  dbWorkShifts.length = 0;
+  dbAttendanceLogs.length = 0;
+
+  dbRateConfigs.push({
+    id: 'rate-hk-overlap',
+    positionId: 'pos-housekeeper',
+    payRate: 20.00,
+    billRate: 28.00,
+    effectiveFrom: pastDate,
+    effectiveUntil: null,
+  });
+
+  await assert.rejects(
+    async () => workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, new Date('2026-09-05T08:00:00Z')),
+    (err: any) => err instanceof BadRequestException && err.message.includes('Configuration ambiguity'),
+    'TEST 28 FAILED: Overlapping RateConfigurations did not throw Configuration ambiguity exception',
+  );
+
+  // Remove overlapping rate config
+  const overlapIdx = dbRateConfigs.findIndex((r) => r.id === 'rate-hk-overlap');
+  if (overlapIdx >= 0) dbRateConfigs.splice(overlapIdx, 1);
+
+  // =========================================================================
+  // TEST 29: Correction cannot create CLOCK_OUT before CLOCK_IN
+  // =========================================================================
+  dbWorkShifts.length = 0;
+  dbAttendanceLogs.length = 0;
+  dbTimeCorrectionRequests.length = 0;
+
+  const validIn = new Date('2026-09-05T08:00:00Z');
+  const clockInRes: any = await workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, validIn);
+
+  const invalidOutTcr = await timeCorrectionService.createCorrectionRequest({
+    work_shift_id: clockInRes.shift.id,
+    location_id: propA,
+    requested_timestamp: '2026-09-05T07:45:00Z', // Before 08:00
+    correction_type: 'MISSED_CLOCK_OUT',
+    reason: 'Bad timestamp',
+  }, { id: 'worker-1', companyId: compAlpha, assignedLocationIds: [propA] });
+
+  await assert.rejects(
+    async () => timeCorrectionService.approveCorrectionRequest(invalidOutTcr.id, {}, supervisorPropA),
+    (err: any) => err instanceof BadRequestException && err.message.includes('Effective CLOCK_OUT must be after effective CLOCK_IN'),
+    'TEST 29 FAILED: Correction with CLOCK_OUT before CLOCK_IN was not rejected',
+  );
+
+  // =========================================================================
+  // TEST 30: Correction cannot invalidate lunch interval
+  // =========================================================================
+  dbWorkShifts.length = 0;
+  dbAttendanceLogs.length = 0;
+
+  const shiftIn = new Date('2026-09-05T08:00:00Z');
+  const lunchStart = new Date('2026-09-05T12:00:00Z');
+  const lunchEnd = new Date('2026-09-05T12:30:00Z');
+
+  const ws30Res: any = await workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, shiftIn);
+  await workShiftService.processPunchSequence('worker-1', propA, AttendanceType.LUNCH_START, AttendanceMethod.KIOSK_PIN, lunchStart);
+  await workShiftService.processPunchSequence('worker-1', propA, AttendanceType.LUNCH_END, AttendanceMethod.KIOSK_PIN, lunchEnd);
+
+  const tcrLunchConflict = await timeCorrectionService.createCorrectionRequest({
+    work_shift_id: ws30Res.shift.id,
+    location_id: propA,
+    requested_timestamp: '2026-09-05T11:45:00Z', // Before lunchEnd!
+    correction_type: 'MISSED_CLOCK_OUT',
+    reason: 'Truncate shift before lunch ended',
+  }, { id: 'worker-1', companyId: compAlpha, assignedLocationIds: [propA] });
+
+  await assert.rejects(
+    async () => timeCorrectionService.approveCorrectionRequest(tcrLunchConflict.id, {}, supervisorPropA),
+    (err: any) => err instanceof BadRequestException && err.message.includes('conflicts with recorded lunch/break punches'),
+    'TEST 30 FAILED: Correction invalidating lunch interval was not rejected',
+  );
+
+  // =========================================================================
+  // TEST 31: Correction causing overlapping employee WorkShift is rejected
+  // =========================================================================
+  dbWorkShifts.length = 0;
+  dbAttendanceLogs.length = 0;
+  dbTimeCorrectionRequests.length = 0;
+
+  // Shift 1: 08:00 to 12:00
+  const s1In = new Date('2026-09-05T08:00:00Z');
+  const s1Out = new Date('2026-09-05T12:00:00Z');
+  await workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, s1In);
+  await workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_OUT, AttendanceMethod.KIOSK_PIN, s1Out);
+  const shift1Id = dbWorkShifts[0].id;
+
+  // Shift 2: 13:00 to 17:00
+  const s2In = new Date('2026-09-05T13:00:00Z');
+  const s2Out = new Date('2026-09-05T17:00:00Z');
+  await workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, s2In);
+  await workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_OUT, AttendanceMethod.KIOSK_PIN, s2Out);
+
+  // Attempt to correct Shift 1 CLOCK_OUT to 14:00 (overlaps Shift 2)
+  const tcrOverlap = await timeCorrectionService.createCorrectionRequest({
+    work_shift_id: shift1Id,
+    location_id: propA,
+    requested_timestamp: '2026-09-05T14:00:00Z',
+    correction_type: 'INCORRECT_CLOCK_OUT',
+    reason: 'Extend shift 1 into shift 2',
+  }, { id: 'worker-1', companyId: compAlpha, assignedLocationIds: [propA] });
+
+  await assert.rejects(
+    async () => timeCorrectionService.approveCorrectionRequest(tcrOverlap.id, {}, supervisorPropA),
+    (err: any) => err instanceof BadRequestException && err.message.includes('Correction causes overlapping WorkShift'),
+    'TEST 31 FAILED: Correction causing overlapping WorkShift was not rejected',
+  );
+
+  // =========================================================================
+  // TEST 32: Missed clock-out can be detected/surfaced even without fabricating a punch
+  // =========================================================================
+  dbWorkShifts.length = 0;
+  dbAttendanceLogs.length = 0;
+
+  const oldShiftIn = new Date(Date.now() - 20 * 60 * 60 * 1000); // 20 hours ago
+  await workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, oldShiftIn);
+
+  // Call getShifts (non-mutating read endpoint)
+  const surfacedShifts = await workShiftService.getShifts(supervisorPropA, { locationId: propA });
+  assert.strictEqual(surfacedShifts[0].isOverdue, true, 'TEST 32 FAILED: Overdue shift was not surfaced with isOverdue=true');
+  assert.strictEqual(surfacedShifts[0].effectiveDisplayStatus, 'MISSED_CLOCK_OUT', 'TEST 32 FAILED: Overdue shift effectiveDisplayStatus was not MISSED_CLOCK_OUT');
+  // Verify DB record remained OPEN (no silent mutation on GET)
+  assert.strictEqual(dbWorkShifts[0].status, 'OPEN', 'TEST 32 FAILED: GET endpoint mutated database state!');
+
+  // =========================================================================
+  // TEST 33: Unresolved MISSED_CLOCK_OUT shift allows new shift, punches isolate to new shift
+  // =========================================================================
+  dbWorkShifts.length = 0;
+  dbAttendanceLogs.length = 0;
+
+  // Day 1: Forgotten clock-out -> MISSED_CLOCK_OUT
+  const day1In = new Date('2026-09-01T08:00:00Z');
+  await workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, day1In);
+  await workShiftService.checkMissedClockOuts(propA);
+  assert.strictEqual(dbWorkShifts[0].status, 'MISSED_CLOCK_OUT', 'TEST 33 PRE-CHECK FAILED: Day 1 shift not MISSED_CLOCK_OUT');
+
+  // Day 2: New CLOCK_IN while Day 1 is still unresolved MISSED_CLOCK_OUT
+  const day2In = new Date('2026-09-02T08:00:00Z');
+  const day2Out = new Date('2026-09-02T17:00:00Z');
+
+  const day2InRes: any = await workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, day2In);
+  assert.strictEqual(dbWorkShifts.length, 2, 'TEST 33 FAILED: New shift was blocked by unresolved MISSED_CLOCK_OUT!');
+  assert.strictEqual(day2InRes.shift.status, 'OPEN', 'TEST 33 FAILED: Day 2 shift status should be OPEN');
+
+  const day2OutRes: any = await workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_OUT, AttendanceMethod.KIOSK_PIN, day2Out);
+  assert.strictEqual(day2OutRes.shift.id, day2InRes.shift.id, 'TEST 33 FAILED: Punch attached to wrong WorkShift!');
+  assert.strictEqual(day2OutRes.shift.status, 'COMPLETED', 'TEST 33 FAILED: Day 2 shift did not complete');
+  assert.strictEqual(dbWorkShifts[0].status, 'MISSED_CLOCK_OUT', 'TEST 33 FAILED: Day 1 shift was modified by Day 2 punch!');
+
+  console.log('✅ ALL 33 REAL PHASE 3 & 3.1 WORK SHIFT SECURITY & INTEGRITY TESTS (TEST 1 - TEST 33) PASSED SUCCESSFULLY!');
 }
 
 if (require.main === module) {

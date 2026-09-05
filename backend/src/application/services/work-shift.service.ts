@@ -65,6 +65,15 @@ export class WorkShiftService {
     const maxShiftMins = config?.maxShiftDurationMinutes || 960; // default 16 hours
 
     return await this.prisma.$transaction(async (tx) => {
+      // Concurrency Protection: Row lock user record inside transaction
+      if ((tx as any).$queryRaw) {
+        try {
+          await (tx as any).$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
+        } catch (e) {
+          // Ignore if raw SQL unsupported in mock context
+        }
+      }
+
       // 3. Check for existing open shift and detect missed clock-outs if max duration exceeded
       let openShift = await tx.workShift.findFirst({
         where: { userId, status: 'OPEN' },
@@ -129,20 +138,57 @@ export class WorkShiftService {
           },
         });
 
-        // Resolve RateConfiguration effective at clockIn timestamp
+        // Resolve RateConfiguration with strict precedence rules
         let rateConfig: any = null;
-        if (assignment?.positionId) {
-          rateConfig = await tx.rateConfiguration.findFirst({
+
+        if (assignment?.rateConfigurationId) {
+          // Pinned RateConfiguration scenario
+          const pinnedRate = await tx.rateConfiguration.findUnique({
+            where: { id: assignment.rateConfigurationId },
+          });
+          if (pinnedRate) {
+            const isEffectiveFromValid = new Date(pinnedRate.effectiveFrom) <= timestamp;
+            const isEffectiveUntilValid = !pinnedRate.effectiveUntil || new Date(pinnedRate.effectiveUntil) >= timestamp;
+            if (isEffectiveFromValid && isEffectiveUntilValid) {
+              rateConfig = pinnedRate;
+            } else {
+              // Pinned rate exists but is expired: DO NOT silently use expired rate, DO NOT silently fall back to position rate
+              await tx.auditLog.create({
+                data: {
+                  actorId: userId,
+                  action: 'EXPIRED_PINNED_RATE_CONFIG_DETECTED',
+                  targetEntity: `EmployeeAssignment:${assignment.id}`,
+                  details: {
+                    rateConfigurationId: assignment.rateConfigurationId,
+                    effectiveFrom: pinnedRate.effectiveFrom,
+                    effectiveUntil: pinnedRate.effectiveUntil,
+                    timestamp,
+                  },
+                },
+              });
+              rateConfig = null;
+            }
+          }
+        } else if (assignment?.positionId) {
+          // Inherited Position RateConfiguration scenario
+          const matchingRates = await tx.rateConfiguration.findMany({
             where: {
               positionId: assignment.positionId,
               effectiveFrom: { lte: timestamp },
               OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: timestamp } }],
             },
-            orderBy: { effectiveFrom: 'desc' },
           });
+
+          if (matchingRates.length > 1) {
+            throw new BadRequestException(
+              `Configuration ambiguity: Overlapping active RateConfigurations (${matchingRates.length}) found for position '${assignment.positionId}' at timestamp ${timestamp.toISOString()}.`,
+            );
+          } else if (matchingRates.length === 1) {
+            rateConfig = matchingRates[0];
+          }
         }
 
-        // Create new WorkShift
+        // Create new WorkShift with complete financial snapshot
         const newShift = await tx.workShift.create({
           data: {
             userId,
@@ -153,10 +199,13 @@ export class WorkShiftService {
             rateConfigurationId: rateConfig?.id || null,
             clockInTimestamp: timestamp,
             effectiveClockIn: timestamp,
-            payRateApplied: rateConfig?.payRate || null,
-            billRateApplied: rateConfig?.billRate || null,
-            otPayRateApplied: rateConfig?.otPayRate || null,
-            otBillRateApplied: rateConfig?.otBillRate || null,
+            payRateApplied: rateConfig?.payRate ?? null,
+            billRateApplied: rateConfig?.billRate ?? null,
+            otPayRateApplied: rateConfig?.otPayRate ?? null,
+            otBillRateApplied: rateConfig?.otBillRate ?? null,
+            markupTypeApplied: rateConfig?.markupType ?? null,
+            markupValueApplied: rateConfig?.markupValue ?? null,
+            minimumShiftMinsApplied: rateConfig?.minimumShiftMins ?? null,
             status: 'OPEN',
           },
         });
@@ -309,7 +358,8 @@ export class WorkShiftService {
   }
 
   /**
-   * Queries WorkShifts with company and property isolation + financial field masking.
+   * Pure non-mutating idempotent query for WorkShifts.
+   * Dynamically surfaces isOverdue and effectiveDisplayStatus without mutating database.
    */
   async getShifts(currentUser: any, query: any) {
     const where: any = {};
@@ -333,7 +383,7 @@ export class WorkShiftService {
       where,
       include: {
         user: { select: { id: true, employeeNumber: true, firstName: true, lastName: true } },
-        location: { select: { id: true, name: true, locationCode: true } },
+        location: { select: { id: true, name: true, locationCode: true, operationalConfig: true } },
         department: { select: { id: true, name: true, deptCode: true } },
         position: { select: { id: true, title: true, code: true } },
         logs: { orderBy: { timestamp: 'asc' } },
@@ -343,7 +393,19 @@ export class WorkShiftService {
       take: 100,
     });
 
-    return shifts.map((s) => this.authzService.maskFinancialFields(s, currentUser, s.locationId));
+    const now = new Date();
+    return shifts.map((s) => {
+      const masked: any = this.authzService.maskFinancialFields(s, currentUser, s.locationId);
+      const maxMins = s.location?.operationalConfig?.maxShiftDurationMinutes || 960;
+      const elapsedMins = (now.getTime() - new Date(s.clockInTimestamp).getTime()) / (1000 * 60);
+      const isOverdue = s.status === 'OPEN' && elapsedMins > maxMins;
+
+      return {
+        ...masked,
+        isOverdue,
+        effectiveDisplayStatus: isOverdue ? 'MISSED_CLOCK_OUT' : s.status,
+      };
+    });
   }
 
   async getShiftById(id: string, currentUser: any) {
@@ -367,5 +429,25 @@ export class WorkShiftService {
     }
 
     return this.authzService.maskFinancialFields(shift, currentUser, shift.locationId);
+  }
+
+  /**
+   * Helper function for deterministic rounded time calculations without mutating raw or effective shift fields.
+   */
+  calculateRoundedTimestamp(timestamp: Date, rule?: { roundingMinutes?: number; direction?: 'NEAREST' | 'UP' | 'DOWN' }): Date {
+    const roundMins = rule?.roundingMinutes || 5;
+    const direction = rule?.direction || 'NEAREST';
+    const ms = 1000 * 60 * roundMins;
+    const time = timestamp.getTime();
+
+    let roundedTime: number;
+    if (direction === 'UP') {
+      roundedTime = Math.ceil(time / ms) * ms;
+    } else if (direction === 'DOWN') {
+      roundedTime = Math.floor(time / ms) * ms;
+    } else {
+      roundedTime = Math.round(time / ms) * ms;
+    }
+    return new Date(roundedTime);
   }
 }
