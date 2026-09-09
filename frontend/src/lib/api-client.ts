@@ -69,7 +69,9 @@ export const attendanceApi = {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
     return request<any[]>(`/attendance/punches${qs}`);
   },
-  kioskClock: (data: { employee_number: string; pin_code: string; location_code: string; type: string; photo_url?: string; device_info?: any }) =>
+  kioskStatus: (data: { employee_number: string; pin_code: string; property_id?: string; location_code?: string }) =>
+    request<any>('/attendance/kiosk-status', { method: 'POST', body: JSON.stringify(data) }),
+  kioskClock: (data: { employee_number: string; pin_code: string; property_id?: string; location_code?: string; type: string; photo_url?: string; device_info?: any }) =>
     request<any>('/attendance/kiosk-clock', { method: 'POST', body: JSON.stringify(data) }),
   clock: (data: { user_id?: string; location_id: string; type: string; method?: string; device_info?: any }) =>
     request<any>('/attendance/clock', { method: 'POST', body: JSON.stringify(data) }),

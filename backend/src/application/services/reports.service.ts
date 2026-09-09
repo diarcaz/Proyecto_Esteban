@@ -1,10 +1,29 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '@infrastructure/persistence/prisma/prisma.service';
+import { AuthorizationService } from '@domain/security/authorization.service';
+import { Permission } from '@domain/permissions/permission.enum';
 import { PunchQueryDto } from '@adapters/dtos/attendance.dtos';
+
+/**
+ * Phase 3.2 (J): CSV formula injection sanitizer.
+ * Strips leading characters that trigger formula execution in spreadsheet applications.
+ * Covers: =, +, -, @, TAB, CR, LF, semicolon
+ */
+function sanitizeCsvCell(value: string | null | undefined): string {
+  if (!value) return '';
+  const s = String(value);
+  // Strip any leading characters that could trigger formula injection
+  const sanitized = s.replace(/^[=+\-@\t\r\n;]+/, '');
+  // Also wrap in single-quote prefix if it starts with a formula character after stripping
+  return sanitized;
+}
 
 @Injectable()
 export class ReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly authzService: AuthorizationService,
+  ) {}
 
   async getReportPunchData(query: PunchQueryDto, allowedLocationIds?: string[]) {
     const where: any = {};
@@ -35,6 +54,7 @@ export class ReportsService {
         },
         location: true,
         shiftSchedule: true,
+        workShift: true,
       },
       orderBy: [{ userId: 'asc' }, { timestamp: 'asc' }],
     });
@@ -71,7 +91,12 @@ export class ReportsService {
       const user = empLogs[0].user;
 
       empLogs.forEach((log) => {
-        const hours = log.calculatedHours ? parseFloat(log.calculatedHours.toString()) : 8.0;
+        let hours = 0.0;
+        if (log.workShift) {
+          hours = ((log.workShift.regularMinutes || 0) + (log.workShift.overtimeMinutes || 0)) / 60;
+        } else if (log.calculatedHours) {
+          hours = parseFloat(log.calculatedHours.toString());
+        }
         empTotalHours += hours;
         totalCompanyHours += hours;
 
@@ -104,47 +129,114 @@ export class ReportsService {
     return Buffer.from(pdfContent, 'utf-8');
   }
 
-  async buildPayrollExcelBuffer(query: PunchQueryDto, allowedLocationIds?: string[]): Promise<Buffer> {
+  /**
+   * Phase 3.2 (I): Financial fields (hourlyRate, billRate, OT rates) are ONLY included
+   * when the requesting user has the appropriate financial permissions.
+   * Phase 3.2 (J): All user-provided string cells are sanitized against CSV formula injection.
+   */
+  async buildPayrollExcelBuffer(query: PunchQueryDto, allowedLocationIds?: string[], currentUser?: any): Promise<Buffer> {
     const logs = await this.getReportPunchData(query, allowedLocationIds);
 
-    const employeeMap = new Map<string, { user: any; regHours: number; otHours: number }>();
+    // Phase 3.2 (I & Item 1): Determine financial field visibility using tenant/company context
+    const targetCompanyId = currentUser?.companyId;
+    const targetPropertyId = query.location_id;
+    const canViewPayRate =
+      this.authzService.hasCompanyPermission(currentUser, Permission.VIEW_PAY_RATE, targetCompanyId) ||
+      (targetPropertyId ? this.authzService.hasPermission(currentUser, Permission.VIEW_PAY_RATE, targetPropertyId, targetCompanyId) : false) ||
+      (currentUser?.permissions?.includes(Permission.VIEW_PAY_RATE) ?? false);
+    const canViewBillRate =
+      this.authzService.hasCompanyPermission(currentUser, Permission.VIEW_BILL_RATE, targetCompanyId) ||
+      (targetPropertyId ? this.authzService.hasPermission(currentUser, Permission.VIEW_BILL_RATE, targetPropertyId, targetCompanyId) : false) ||
+      (currentUser?.permissions?.includes(Permission.VIEW_BILL_RATE) ?? false);
+
+    if (!canViewPayRate && !canViewBillRate) {
+      throw new ForbiddenException(
+        'Access denied: You do not have the required financial permissions (VIEW_PAY_RATE or VIEW_BILL_RATE) to generate payroll/billing reports.',
+      );
+    }
+
+    const employeeMap = new Map<string, { user: any; regHours: number; otHours: number; otRateConfigured: number | null }>();
 
     for (const log of logs) {
       const user = log.user;
       if (!employeeMap.has(user.id)) {
-        employeeMap.set(user.id, { user, regHours: 0, otHours: 0 });
+        employeeMap.set(user.id, { user, regHours: 0, otHours: 0, otRateConfigured: null });
       }
       const item = employeeMap.get(user.id)!;
-      const hrs = log.calculatedHours ? parseFloat(log.calculatedHours.toString()) : 8.0;
-      if (log.isOvertime || hrs > 8.0) {
-        item.regHours += 8.0;
-        item.otHours += Math.max(0, hrs - 8.0);
+
+      // Item 2: Consume canonical regular and overtime values from domain layer without inventing thresholds
+      if (log.workShift) {
+        item.regHours += (log.workShift.regularMinutes || 0) / 60;
+        item.otHours += (log.workShift.overtimeMinutes || 0) / 60;
+        if (log.workShift.otPayRateApplied) {
+          item.otRateConfigured = parseFloat(log.workShift.otPayRateApplied.toString());
+        }
       } else {
-        item.regHours += hrs;
+        const hrs = log.calculatedHours ? parseFloat(log.calculatedHours.toString()) : 0.0;
+        // Do NOT infer overtime merely because shift > 8 hours. Respect established isOvertime status.
+        if (log.isOvertime) {
+          item.otHours += hrs;
+        } else {
+          item.regHours += hrs;
+        }
       }
     }
 
-    let csvContent = `EMPLOYEE NAME,RATE,HOURS,TOTAL REG,OT,TOTAL OT,BONUS,TOTAL $\n`;
+    // Phase 3.2 (I): Build CSV header based on permissions
+    let header = 'EMPLOYEE NAME';
+    if (canViewPayRate) header += ',PAY RATE';
+    header += ',HOURS';
+    if (canViewPayRate) header += ',TOTAL REG PAY';
+    header += ',OT HOURS';
+    if (canViewPayRate) header += ',TOTAL OT PAY';
+    header += ',BONUS';
+    if (canViewPayRate) header += ',TOTAL PAY';
+    header += '\n';
 
+    let csvContent = header;
     let rowIndex = 2;
-    employeeMap.forEach(({ user, regHours, otHours }) => {
-      const name = `"${user.firstName} ${user.lastName}"`;
-      const rate = user.hourlyRate ? parseFloat(user.hourlyRate.toString()) : 20.0;
+
+    employeeMap.forEach(({ user, regHours, otHours, otRateConfigured }) => {
+      // Phase 3.2 (J): Sanitize user-provided string fields
+      const safeName = sanitizeCsvCell(`${user.firstName} ${user.lastName}`);
+      const name = `"${safeName}"`;
+      const rate = canViewPayRate && user.hourlyRate ? parseFloat(user.hourlyRate.toString()) : 0;
       const bonus = 0.0;
 
-      const totalRegFormula = `=C${rowIndex}*B${rowIndex}`;
-      const totalOtFormula = `=E${rowIndex}*(B${rowIndex}*1.5)`;
-      const totalPayFormula = `=D${rowIndex}+F${rowIndex}+G${rowIndex}`;
+      // Item 2: Do NOT invent a universal 1.5x overtime multiplier.
+      // Consume configured OT rate if present; otherwise use the standard base rate.
+      const otRate = otRateConfigured !== null ? otRateConfigured : (user.otPayRate ? parseFloat(user.otPayRate.toString()) : rate);
 
-      csvContent += `${name},${rate.toFixed(2)},${regHours.toFixed(2)},"${totalRegFormula}",${otHours.toFixed(
-        2,
-      )},"${totalOtFormula}",${bonus.toFixed(2)},"${totalPayFormula}"\n`;
+      let row = name;
+
+      if (canViewPayRate) {
+        row += `,${rate.toFixed(2)}`;
+      }
+
+      row += `,${regHours.toFixed(2)}`;
+
+      if (canViewPayRate) {
+        const totalReg = (regHours * rate).toFixed(2);
+        row += `,${totalReg}`;
+      }
+
+      row += `,${otHours.toFixed(2)}`;
+
+      if (canViewPayRate) {
+        const totalOt = (otHours * otRate).toFixed(2);
+        row += `,${totalOt}`;
+      }
+
+      row += `,${bonus.toFixed(2)}`;
+
+      if (canViewPayRate) {
+        const totalPay = (regHours * rate + otHours * otRate + bonus).toFixed(2);
+        row += `,${totalPay}`;
+      }
+
+      csvContent += row + '\n';
       rowIndex++;
     });
-
-    csvContent += `TOTALS,,=SUM(C2:C${rowIndex - 1}),=SUM(D2:D${rowIndex - 1}),=SUM(E2:E${rowIndex - 1}),=SUM(F2:F${
-      rowIndex - 1
-    }),=SUM(G2:G${rowIndex - 1}),=SUM(H2:H${rowIndex - 1})\n`;
 
     return Buffer.from(csvContent, 'utf-8');
   }

@@ -1,4 +1,6 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, BadRequestException, NotFoundException, ForbiddenException, UnauthorizedException, Req } from '@nestjs/common';
+import { PropertyRead } from '@adapters/decorators/property-read.decorator';
+import { KioskClockDto, KioskStatusDto } from '@adapters/dtos/attendance.dtos';
+import { Controller, Get, Post, Patch, Body, Param, Query, BadRequestException, NotFoundException, ForbiddenException, UnauthorizedException, Req, UseGuards, HttpException } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AttendanceService } from '../../application/services/attendance.service';
@@ -6,9 +8,14 @@ import { Roles } from '@adapters/decorators/roles-and-locations.decorator';
 import { Public } from '@adapters/decorators/public.decorator';
 import { UserRole } from '@domain/entities/user.entity';
 import { assertLocationAccess } from '@infrastructure/auth/location-access.util';
+import { TenantGuard } from '@adapters/guards/tenant.guard';
+import { PermissionsGuard } from '@adapters/guards/permissions.guard';
+import { RequirePermissions } from '@adapters/decorators/permissions.decorator';
+import { Permission } from '@domain/permissions/permission.enum';
 
 @ApiTags('Attendance')
 @Controller('api/v1/attendance')
+@UseGuards(TenantGuard, PermissionsGuard)
 export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
 
@@ -19,7 +26,7 @@ export class AttendanceController {
       const userId = req.user.id;
       return await this.attendanceService.processStandardClock(userId, body);
     } catch (e: any) {
-      if (e instanceof ForbiddenException || e instanceof NotFoundException || e instanceof UnauthorizedException) throw e;
+      if (e instanceof HttpException) throw e;
       throw new BadRequestException(e.message || 'Failed to record attendance punch');
     }
   }
@@ -37,8 +44,21 @@ export class AttendanceController {
       }
       return await this.attendanceService.processStandardClock(body.user_id, body);
     } catch (e: any) {
-      if (e instanceof ForbiddenException || e instanceof NotFoundException || e instanceof UnauthorizedException) throw e;
+      if (e instanceof HttpException) throw e;
       throw new BadRequestException(e.message || 'Failed to record proxy attendance punch');
+    }
+  }
+
+  @Post('kiosk-status')
+  @Public()
+  @Throttle({ default: { limit: 15, ttl: 60000 } })
+  @ApiOperation({ summary: 'Evaluate kiosk employee status and allowed punch actions' })
+  async kioskStatus(@Body() body: KioskStatusDto) {
+    try {
+      return await this.attendanceService.getKioskEmployeeStatus(body);
+    } catch (e: any) {
+      if (e instanceof HttpException) throw e;
+      throw new BadRequestException('Failed to retrieve kiosk employee status');
     }
   }
 
@@ -46,23 +66,26 @@ export class AttendanceController {
   @Public()
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Submit touchscreen PIN kiosk punch' })
-  async kioskPunch(@Body() body: any) {
+  async kioskPunch(@Body() body: KioskClockDto) {
     try {
       return await this.attendanceService.processKioskClock(body);
     } catch (e: any) {
-      throw new BadRequestException(e.message || 'Failed to record kiosk punch');
+      if (e instanceof HttpException) throw e;
+      throw new BadRequestException('Failed to record kiosk punch');
     }
   }
 
   @Get('punches')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.LOCATION_ADMIN, UserRole.SUPERVISOR)
+  @PropertyRead(Permission.TIME_VIEW)
+  @RequirePermissions(Permission.TIME_VIEW)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.LOCATION_ADMIN, UserRole.SUPERVISOR)
   @ApiOperation({ summary: 'Retrieve time punches log list with filters' })
   async getPunches(@Query() query: any, @Req() req: any) {
     try {
-      const allowedLocationIds = req.query.allowed_location_ids as string[] | undefined;
-      return await this.attendanceService.getPunches(query || {}, allowedLocationIds);
+      return await this.attendanceService.getPunches(query || {}, req.user, req.headers || {});
     } catch (e: any) {
-      throw new BadRequestException(e.message || 'Failed to retrieve time punches');
+      if (e instanceof HttpException) throw e;
+      throw new BadRequestException('Failed to retrieve time punches');
     }
   }
 

@@ -1,8 +1,9 @@
 'use client';
 
+import { can } from '@/lib/admin-access';
 import React, { useState, useEffect, useCallback } from 'react';
 import { locationsApi } from '@/lib/api-client';
-import { MOCK_LOCATIONS, LocationMock } from '@/lib/mock-data';
+import { LocationMock } from '@/lib/mock-data';
 import { useLocationStore } from '@/store/use-location-store';
 import { useAuthStore } from '@/store/use-auth-store';
 import Link from 'next/link';
@@ -10,7 +11,9 @@ import { MapPin, Plus, Tablet, Building2, Edit3, ShieldCheck, Trash2, AlertTrian
 
 export default function LocationsPage() {
   const { user } = useAuthStore();
-  const isSuperAdmin = user?.role === 'SUPER_ADMIN' && user?.email === 'admin@nexustaff.com';
+  const isSuperAdmin = can(user, 'PROPERTY_VIEW');
+  const canCreate = can(user, 'PROPERTY_MANAGE') && ['SUPER_ADMIN', 'OWNER', 'ADMIN'].includes(user?.role || '');
+  const canDelete = can(user, 'PROPERTY_MANAGE') && ['SUPER_ADMIN', 'OWNER'].includes(user?.role || '');
 
   const [locations, setLocations] = useState<LocationMock[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +38,7 @@ export default function LocationsPage() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // ── Fetch locations from API (falls back to mock data on error) ───────────
+  // ── Fetch locations from API ───────────
   const fetchLocations = useCallback(async () => {
     setLoading(true);
     setApiError(null);
@@ -45,28 +48,28 @@ export default function LocationsPage() {
         const mapped: LocationMock[] = data.map((loc: any) => ({
           id: loc.id,
           name: loc.name,
-          code: loc.locationCode || loc.code || 'LOC-100',
+          code: loc.code,
           address: loc.address || '',
           city: loc.city || loc.address || '',
           activeStaffCount: loc._count?.assignments || loc.assignments?.length || 0,
-          kioskCode: loc.locationCode?.split('-')[1] || '1001',
+          kioskCode: loc.kioskCode || '',
         }));
         setLocations(mapped);
       } else {
-        setLocations(MOCK_LOCATIONS);
-        setApiError('Using demo data (database is empty — run seed first)');
+        setLocations([]);
+        setApiError('No authorized properties available.');
       }
     } catch {
-      setLocations(MOCK_LOCATIONS);
-      setApiError('Backend offline — showing demo data (changes persist in-session only)');
+      setLocations([]);
+      setApiError('Unable to load authorized properties.');
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchLocations();
-  }, [fetchLocations]);
+    if (isSuperAdmin) fetchLocations();
+  }, [fetchLocations, isSuperAdmin]);
 
   if (!isSuperAdmin) {
     return (
@@ -74,9 +77,9 @@ export default function LocationsPage() {
         <div className="h-16 w-16 rounded-3xl bg-rose-500/10 text-rose-400 flex items-center justify-center border border-rose-500/20 shadow-xl">
           <ShieldAlert className="h-8 w-8" />
         </div>
-        <h2 className="text-xl font-black text-white">Restricted Access - SuperAdmin Only</h2>
+        <h2 className="text-xl font-black text-white">Access Denied</h2>
         <p className="text-xs text-slate-400 max-w-md">
-          The Global Branch Management module is available to General Administrators only. Branch Administrators operate exclusively within their assigned location.
+          Property viewing permission is required.
         </p>
         <Link href="/admin" className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white transition-all shadow-md">
           Return to Main Overview
@@ -122,15 +125,7 @@ export default function LocationsPage() {
       setShowAddModal(false);
       showToast(`Branch location "${formData.name}" created and saved to database!`);
     } catch (err: any) {
-      const created: LocationMock = {
-        id: `loc-${Date.now()}`,
-        name: formData.name, code: formData.code, address: formData.address,
-        city: formData.city || 'Mexico', activeStaffCount: 0, kioskCode: formData.kioskCode,
-      };
-      setLocations((prev) => [...prev, created]);
-      useLocationStore.setState((state) => ({ locations: [...state.locations, created] }));
-      setShowAddModal(false);
-      showToast(`Location added locally (API: ${err.message})`, true);
+      showToast('Unable to create property. No changes were saved.', true);
     } finally {
       setSaving(false);
     }
@@ -150,12 +145,7 @@ export default function LocationsPage() {
       setEditingLoc(null);
       showToast(`Branch "${formData.name}" updated in database!`);
     } catch (err: any) {
-      setLocations((prev) =>
-        prev.map((l) => l.id === editingLoc.id ? { ...l, ...formData } : l)
-      );
-      useLocationStore.getState().fetchLocations();
-      setEditingLoc(null);
-      showToast(`Updated locally (API: ${err.message})`, true);
+      showToast('Unable to update property. No changes were saved.', true);
     } finally {
       setSaving(false);
     }
@@ -172,9 +162,7 @@ export default function LocationsPage() {
       setDeletingLoc(null);
       showToast(`Branch "${deletingLoc.name}" deleted from database!`);
     } catch (err: any) {
-      setLocations((prev) => prev.filter((l) => l.id !== deletingLoc.id));
-      setDeletingLoc(null);
-      showToast(`Removed locally (API: ${err.message})`, true);
+      showToast('Unable to delete property.', true);
     } finally {
       setSaving(false);
     }
@@ -206,7 +194,7 @@ export default function LocationsPage() {
           </h2>
           <p className="text-xs text-slate-400 font-medium">Manage agency branch locations, addresses, timezone settings, and unique kiosk device codes.</p>
         </div>
-        <button onClick={openAddModal} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs shadow-lg transition-all active:scale-95 cursor-pointer">
+        <button disabled={!canCreate} onClick={openAddModal} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs shadow-lg transition-all active:scale-95 cursor-pointer">
           <Plus className="h-4 w-4" /> Add New Branch Location
         </button>
       </div>
@@ -250,10 +238,10 @@ export default function LocationsPage() {
                   <ShieldCheck className="h-3.5 w-3.5" /> Status: Active &amp; Synced
                 </span>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => openEditModal(loc)} className="flex items-center gap-1 text-slate-400 hover:text-white font-bold cursor-pointer">
+                  <button disabled={!can(user, 'PROPERTY_MANAGE', loc.id)} onClick={() => openEditModal(loc)} className="flex items-center gap-1 text-slate-400 hover:text-white font-bold cursor-pointer">
                     <Edit3 className="h-3.5 w-3.5" /> Edit
                   </button>
-                  <button onClick={() => setDeletingLoc(loc)} className="flex items-center gap-1 text-slate-400 hover:text-rose-400 font-bold cursor-pointer">
+                  <button disabled={!canDelete} onClick={() => setDeletingLoc(loc)} className="flex items-center gap-1 text-slate-400 hover:text-rose-400 font-bold cursor-pointer">
                     <Trash2 className="h-3.5 w-3.5" /> Delete
                   </button>
                 </div>

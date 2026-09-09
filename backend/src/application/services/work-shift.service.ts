@@ -1,8 +1,11 @@
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { resolveEmployeeClockAssignment } from './employee-clock-context';
+import { evaluateShiftState } from './shift-state';
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '@infrastructure/persistence/prisma/prisma.service';
 import { AuthorizationService } from '@domain/security/authorization.service';
 import { Permission } from '@domain/permissions/permission.enum';
 import { AttendanceType, AttendanceStatus, AttendanceMethod } from '@domain/entities/attendance-log.entity';
+import { calculateShiftWorkedMinutes } from './time-correction.service';
 
 @Injectable()
 export class WorkShiftService {
@@ -20,6 +23,14 @@ export class WorkShiftService {
    * - State machine punch sequence validation
    * - Max shift duration detection (flags MISSED_CLOCK_OUT without fabricating fake punches)
    * - Overnight shift support
+   *
+   * Phase 3.2 additions:
+   * - Employee assignment ambiguity detection (G)
+   * - Pinned rate / position consistency validation (G)
+   * - Canonical lunch-adjusted shift calculation (H)
+   * - No hardcoded 480-minute overtime threshold (H)
+   * - Production row-lock errors are NOT silently swallowed (L)
+   * - P2002 duplicate-open conflicts produce controlled errors (L)
    */
   async processPunchSequence(
     userId: string,
@@ -30,192 +41,160 @@ export class WorkShiftService {
     deviceInfo?: Record<string, any>,
     locationCoordinates?: { latitude: number; longitude: number; accuracy?: number },
   ) {
-    // 1. Verify property assignment invariant
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, role: true, employeeNumber: true, firstName: true, lastName: true },
-    });
-    if (!user) throw new NotFoundException(`User ${userId} not found.`);
-
-    if (user.role !== 'SUPER_ADMIN') {
-      const isAssignedLoc = await this.prisma.userLocationAssignment.findFirst({
-        where: { userId, locationId },
-      });
-      const isAssignedEmp = await this.prisma.employeeAssignment.findFirst({
-        where: {
-          userId,
-          propertyId: locationId,
-          active: true,
-          effectiveFrom: { lte: timestamp },
-          OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: timestamp } }],
-        },
-      });
-
-      if (!isAssignedLoc && !isAssignedEmp) {
-        throw new ForbiddenException(
-          `Access denied: Employee ${user.employeeNumber} (${user.firstName} ${user.lastName}) has no active assignment to property '${locationId}'. Clock operation denied.`,
-        );
-      }
-    }
-
-    // 2. Fetch operational configuration for max shift duration limit
-    const config = await this.prisma.propertyOperationalConfig.findUnique({
-      where: { locationId },
-    });
-    const maxShiftMins = config?.maxShiftDurationMinutes || 960; // default 16 hours
-
-    return await this.prisma.$transaction(async (tx) => {
-      // Concurrency Protection: Row lock user record inside transaction
-      if ((tx as any).$queryRaw) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // A real transaction must acquire the employee row lock; no error-code fallback.
+        if (typeof tx.$queryRaw !== 'function') throw new BadRequestException('Concurrency lock unavailable. Please retry.');
         try {
-          await (tx as any).$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
-        } catch (e) {
-          // Ignore if raw SQL unsupported in mock context
+          await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
+        } catch {
+          throw new BadRequestException('Concurrency lock failed. Transaction aborted. Please retry.');
         }
-      }
+        const user = await tx.user.findUnique({ where: { id: userId } });
+        if (!user || user.status !== 'ACTIVE') throw new ForbiddenException('Employee is not eligible to clock.');
+        const assignment = await resolveEmployeeClockAssignment(tx, userId, locationId, timestamp);
+        let openShift = await tx.workShift.findFirst({ where: { userId, status: 'OPEN' }, orderBy: { clockInTimestamp: 'desc' } });
+        const shiftLogs = openShift ? await tx.attendanceLog.findMany({ where: { workShiftId: openShift.id }, orderBy: { timestamp: 'asc' } }) : [];
+        const config = openShift ? await tx.propertyOperationalConfig.findUnique({ where: { locationId: openShift.locationId } }) : null;
+        const state = evaluateShiftState(userId, locationId, openShift, shiftLogs, timestamp, config?.maxShiftDurationMinutes ?? 960);
+        if (!state.allowedActions.includes(type)) throw new BadRequestException('Invalid punch sequence. Requested action is not allowed for the current shift.');
+        if (openShift && state.isOverdue) {
+          await tx.workShift.update({ where: { id: openShift.id }, data: { status: 'MISSED_CLOCK_OUT' } });
+          await tx.auditLog.create({ data: { actorId: userId, action: 'MISSED_CLOCK_OUT_DETECTED', targetEntity: `WorkShift:${openShift.id}`, details: { workShiftId: openShift.id, locationId: openShift.locationId } } });
+          openShift = null;
+        }
 
-      // 3. Check for existing open shift and detect missed clock-outs if max duration exceeded
-      let openShift = await tx.workShift.findFirst({
-        where: { userId, status: 'OPEN' },
-        orderBy: { clockInTimestamp: 'desc' },
-      });
+        // 4. Handle CLOCK_IN
+        if (type === AttendanceType.CLOCK_IN) {
+          if (openShift) {
+            throw new BadRequestException('Invalid punch sequence. Employee already has an open work shift. Perform CLOCK_OUT first.');
+          }
 
-      if (openShift) {
-        const elapsedMins = (timestamp.getTime() - openShift.clockInTimestamp.getTime()) / (1000 * 60);
-        if (elapsedMins > maxShiftMins) {
-          // Flag open shift as MISSED_CLOCK_OUT without fabricating a fake CLOCK_OUT punch
-          await tx.workShift.update({
-            where: { id: openShift.id },
-            data: { status: 'MISSED_CLOCK_OUT' },
-          });
-
-          await tx.auditLog.create({
-            data: {
-              actorId: userId,
-              action: 'MISSED_CLOCK_OUT_DETECTED',
-              targetEntity: `WorkShift:${openShift.id}`,
-              details: {
-                workShiftId: openShift.id,
-                locationId,
-                elapsedMinutes: Math.round(elapsedMins),
-                maxShiftDurationMinutes: maxShiftMins,
-              },
+          // Idempotency check: prevent duplicate CLOCK_IN within 5 seconds
+          const recentShift = await tx.workShift.findFirst({
+            where: {
+              userId,
+              locationId,
+              clockInTimestamp: { gte: new Date(timestamp.getTime() - 5000) },
             },
           });
+          if (recentShift) {
+            const recentLog = await tx.attendanceLog.findFirst({
+              where: { workShiftId: recentShift.id, punchType: AttendanceType.CLOCK_IN as any },
+            });
+            return { shift: recentShift, log: recentLog };
+          }
 
-          openShift = null; // Shift is now closed as MISSED_CLOCK_OUT
-        }
-      }
+          // Resolve RateConfiguration with strict precedence rules
+          let rateConfig: any = null;
 
-      // 4. Handle CLOCK_IN
-      if (type === AttendanceType.CLOCK_IN) {
-        if (openShift) {
-          throw new BadRequestException('Invalid punch sequence. Employee already has an open work shift. Perform CLOCK_OUT first.');
-        }
+          if (assignment?.rateConfigurationId) {
+            // Pinned RateConfiguration scenario
+            const pinnedRate = await tx.rateConfiguration.findUnique({
+              where: { id: assignment.rateConfigurationId },
+            });
+            if (pinnedRate) {
+              // Phase 3.2 (G): Verify pinned rate belongs to the assignment's position
+              if (assignment.positionId && pinnedRate.positionId !== assignment.positionId) {
+                throw new BadRequestException(
+                  `Configuration ambiguity: Pinned RateConfiguration '${assignment.rateConfigurationId}' belongs to position '${pinnedRate.positionId}' but EmployeeAssignment position is '${assignment.positionId}'.`,
+                );
+              }
 
-        // Idempotency check: prevent duplicate CLOCK_IN within 5 seconds
-        const recentShift = await tx.workShift.findFirst({
-          where: {
-            userId,
-            clockInTimestamp: { gte: new Date(timestamp.getTime() - 5000) },
-          },
-        });
-        if (recentShift) {
-          const recentLog = await tx.attendanceLog.findFirst({
-            where: { workShiftId: recentShift.id, punchType: AttendanceType.CLOCK_IN as any },
-          });
-          return { shift: recentShift, log: recentLog };
-        }
-
-        // Resolve active EmployeeAssignment
-        const assignment = await tx.employeeAssignment.findFirst({
-          where: {
-            userId,
-            propertyId: locationId,
-            active: true,
-            effectiveFrom: { lte: timestamp },
-            OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: timestamp } }],
-          },
-        });
-
-        // Resolve RateConfiguration with strict precedence rules
-        let rateConfig: any = null;
-
-        if (assignment?.rateConfigurationId) {
-          // Pinned RateConfiguration scenario
-          const pinnedRate = await tx.rateConfiguration.findUnique({
-            where: { id: assignment.rateConfigurationId },
-          });
-          if (pinnedRate) {
-            const isEffectiveFromValid = new Date(pinnedRate.effectiveFrom) <= timestamp;
-            const isEffectiveUntilValid = !pinnedRate.effectiveUntil || new Date(pinnedRate.effectiveUntil) >= timestamp;
-            if (isEffectiveFromValid && isEffectiveUntilValid) {
-              rateConfig = pinnedRate;
-            } else {
-              // Pinned rate exists but is expired: DO NOT silently use expired rate, DO NOT silently fall back to position rate
-              await tx.auditLog.create({
-                data: {
-                  actorId: userId,
-                  action: 'EXPIRED_PINNED_RATE_CONFIG_DETECTED',
-                  targetEntity: `EmployeeAssignment:${assignment.id}`,
-                  details: {
-                    rateConfigurationId: assignment.rateConfigurationId,
-                    effectiveFrom: pinnedRate.effectiveFrom,
-                    effectiveUntil: pinnedRate.effectiveUntil,
-                    timestamp,
+              const isEffectiveFromValid = new Date(pinnedRate.effectiveFrom) <= timestamp;
+              const isEffectiveUntilValid = !pinnedRate.effectiveUntil || new Date(pinnedRate.effectiveUntil) >= timestamp;
+              if (isEffectiveFromValid && isEffectiveUntilValid) {
+                rateConfig = pinnedRate;
+              } else {
+                // Pinned rate exists but is expired: DO NOT silently use expired rate, DO NOT silently fall back to position rate
+                await tx.auditLog.create({
+                  data: {
+                    actorId: userId,
+                    action: 'EXPIRED_PINNED_RATE_CONFIG_DETECTED',
+                    targetEntity: `EmployeeAssignment:${assignment.id}`,
+                    details: {
+                      rateConfigurationId: assignment.rateConfigurationId,
+                      effectiveFrom: pinnedRate.effectiveFrom,
+                      effectiveUntil: pinnedRate.effectiveUntil,
+                      timestamp,
+                    },
                   },
-                },
-              });
-              rateConfig = null;
+                });
+                rateConfig = null;
+              }
+            }
+          } else if (assignment?.positionId) {
+            // Inherited Position RateConfiguration scenario
+            const matchingRates = await tx.rateConfiguration.findMany({
+              where: {
+                positionId: assignment.positionId,
+                effectiveFrom: { lte: timestamp },
+                OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: timestamp } }],
+              },
+            });
+
+            if (matchingRates.length > 1) {
+              throw new BadRequestException(
+                `Configuration ambiguity: Overlapping active RateConfigurations (${matchingRates.length}) found for position '${assignment.positionId}' at timestamp ${timestamp.toISOString()}.`,
+              );
+            } else if (matchingRates.length === 1) {
+              rateConfig = matchingRates[0];
             }
           }
-        } else if (assignment?.positionId) {
-          // Inherited Position RateConfiguration scenario
-          const matchingRates = await tx.rateConfiguration.findMany({
-            where: {
-              positionId: assignment.positionId,
-              effectiveFrom: { lte: timestamp },
-              OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: timestamp } }],
+
+          // Create new WorkShift with complete financial snapshot
+          const newShift = await tx.workShift.create({
+            data: {
+              userId,
+              locationId,
+              departmentId: assignment?.departmentId || null,
+              positionId: assignment?.positionId || null,
+              employeeAssignmentId: assignment?.id || null,
+              rateConfigurationId: rateConfig?.id || null,
+              clockInTimestamp: timestamp,
+              effectiveClockIn: timestamp,
+              payRateApplied: rateConfig?.payRate ?? null,
+              billRateApplied: rateConfig?.billRate ?? null,
+              otPayRateApplied: rateConfig?.otPayRate ?? null,
+              otBillRateApplied: rateConfig?.otBillRate ?? null,
+              markupTypeApplied: rateConfig?.markupType ?? null,
+              markupValueApplied: rateConfig?.markupValue ?? null,
+              minimumShiftMinsApplied: rateConfig?.minimumShiftMins ?? null,
+              status: 'OPEN',
             },
           });
 
-          if (matchingRates.length > 1) {
-            throw new BadRequestException(
-              `Configuration ambiguity: Overlapping active RateConfigurations (${matchingRates.length}) found for position '${assignment.positionId}' at timestamp ${timestamp.toISOString()}.`,
-            );
-          } else if (matchingRates.length === 1) {
-            rateConfig = matchingRates[0];
-          }
+          // Create AttendanceLog
+          const log = await tx.attendanceLog.create({
+            data: {
+              userId,
+              locationId,
+              workShiftId: newShift.id,
+              punchType: type as any,
+              punchMethod: method as any,
+              timestamp,
+              actualTimestamp: timestamp,
+              effectiveTimestamp: timestamp,
+              deviceInfo: deviceInfo as any,
+              locationCoordinates: locationCoordinates as any,
+              status: AttendanceStatus.ON_TIME,
+            },
+          });
+
+          return { shift: newShift, log };
         }
 
-        // Create new WorkShift with complete financial snapshot
-        const newShift = await tx.workShift.create({
-          data: {
-            userId,
-            locationId,
-            departmentId: assignment?.departmentId || null,
-            positionId: assignment?.positionId || null,
-            employeeAssignmentId: assignment?.id || null,
-            rateConfigurationId: rateConfig?.id || null,
-            clockInTimestamp: timestamp,
-            effectiveClockIn: timestamp,
-            payRateApplied: rateConfig?.payRate ?? null,
-            billRateApplied: rateConfig?.billRate ?? null,
-            otPayRateApplied: rateConfig?.otPayRate ?? null,
-            otBillRateApplied: rateConfig?.otBillRate ?? null,
-            markupTypeApplied: rateConfig?.markupType ?? null,
-            markupValueApplied: rateConfig?.markupValue ?? null,
-            minimumShiftMinsApplied: rateConfig?.minimumShiftMins ?? null,
-            status: 'OPEN',
-          },
-        });
+        // 5. Handle LUNCH_START, LUNCH_END, CLOCK_OUT
+        if (!openShift) {
+          throw new BadRequestException(`Invalid punch sequence. Cannot perform ${type} without an open work shift.`);
+        }
 
-        // Create AttendanceLog
+        // Create punch AttendanceLog
         const log = await tx.attendanceLog.create({
           data: {
             userId,
             locationId,
-            workShiftId: newShift.id,
+            workShiftId: openShift.id,
             punchType: type as any,
             punchMethod: method as any,
             timestamp,
@@ -227,92 +206,42 @@ export class WorkShiftService {
           },
         });
 
-        return { shift: newShift, log };
-      }
+        // Update WorkShift state on CLOCK_OUT
+        if (type === AttendanceType.CLOCK_OUT) {
+          const allLogs = [...shiftLogs, log];
 
-      // 5. Handle LUNCH_START, LUNCH_END, CLOCK_OUT
-      if (!openShift) {
-        throw new BadRequestException(`Invalid punch sequence. Cannot perform ${type} without an open work shift.`);
-      }
+          // Phase 3.2 (H): Use canonical calculation with lunch deduction, no hardcoded OT threshold
+          const { workedMinutes } = calculateShiftWorkedMinutes(
+            openShift.effectiveClockIn!,
+            timestamp,
+            allLogs,
+          );
 
-      // Fetch logs for open shift state machine validation
-      const shiftLogs = await tx.attendanceLog.findMany({
-        where: { workShiftId: openShift.id },
-        orderBy: { timestamp: 'asc' },
+          const updatedShift = await tx.workShift.update({
+            where: { id: openShift.id },
+            data: {
+              clockOutTimestamp: timestamp,
+              effectiveClockOut: timestamp,
+              regularMinutes: workedMinutes,
+              overtimeMinutes: 0,
+              status: 'COMPLETED',
+            },
+          });
+
+          return { shift: updatedShift, log };
+        }
+
+        return { shift: openShift, log };
       });
-      const lastLog = shiftLogs[shiftLogs.length - 1];
-
-      if (type === AttendanceType.LUNCH_START || type === AttendanceType.LUNCH2_START) {
-        if (lastLog?.punchType === AttendanceType.LUNCH_START || lastLog?.punchType === AttendanceType.LUNCH2_START) {
-          throw new BadRequestException(`Invalid punch sequence. Already on lunch break.`);
-        }
+    } catch (error: any) {
+      // Phase 3.2 (L): Handle P2002 unique constraint violations cleanly
+      if (error?.code === 'P2002') {
+        throw new BadRequestException(
+          `Conflict: Employee '${userId}' already has an open work shift. Duplicate OPEN shift creation denied by database constraint.`,
+        );
       }
-
-      if (type === AttendanceType.LUNCH_END || type === AttendanceType.LUNCH2_END) {
-        if (
-          !lastLog ||
-          (lastLog.punchType !== AttendanceType.LUNCH_START && lastLog.punchType !== AttendanceType.LUNCH2_START)
-        ) {
-          throw new BadRequestException(`Invalid punch sequence. Must perform LUNCH_START before ${type}.`);
-        }
-      }
-
-      if (type === AttendanceType.CLOCK_OUT) {
-        if (lastLog?.punchType === AttendanceType.LUNCH_START || lastLog?.punchType === AttendanceType.LUNCH2_START) {
-          throw new BadRequestException(`Invalid punch sequence. Must perform LUNCH_END before CLOCK_OUT.`);
-        }
-      }
-
-      // Create punch AttendanceLog
-      const log = await tx.attendanceLog.create({
-        data: {
-          userId,
-          locationId,
-          workShiftId: openShift.id,
-          punchType: type as any,
-          punchMethod: method as any,
-          timestamp,
-          actualTimestamp: timestamp,
-          effectiveTimestamp: timestamp,
-          deviceInfo: deviceInfo as any,
-          locationCoordinates: locationCoordinates as any,
-          status: AttendanceStatus.ON_TIME,
-        },
-      });
-
-      // Update WorkShift state on CLOCK_OUT
-      if (type === AttendanceType.CLOCK_OUT) {
-        const allLogs = [...shiftLogs, log];
-        const grossMins = Math.max(0, Math.round((timestamp.getTime() - openShift.effectiveClockIn!.getTime()) / (1000 * 60)));
-
-        // Calculate break minutes
-        let breakMins = 0;
-        const lunch1Start = allLogs.find((l) => l.punchType === AttendanceType.LUNCH_START);
-        const lunch1End = allLogs.find((l) => l.punchType === AttendanceType.LUNCH_END);
-        if (lunch1Start && lunch1End) {
-          breakMins += Math.max(0, Math.round((lunch1End.timestamp.getTime() - lunch1Start.timestamp.getTime()) / (1000 * 60)));
-        }
-
-        const workedMins = Math.max(0, grossMins - breakMins);
-        const regularMins = Math.min(workedMins, 480); // 8 hours regular
-        const overtimeMins = Math.max(0, workedMins - 480);
-
-        const updatedShift = await tx.workShift.update({
-          where: { id: openShift.id },
-          data: {
-            clockOutTimestamp: timestamp,
-            effectiveClockOut: timestamp,
-            regularMinutes: regularMins,
-            overtimeMinutes: overtimeMins,
-            status: 'COMPLETED',
-          },
-        });
-
-        return { shift: updatedShift, log };
-      }
-
-      return { shift: openShift, log };
-    });
+      throw error;
+    }
   }
 
   /**
@@ -369,9 +298,16 @@ export class WorkShiftService {
     }
 
     if (query.locationId) {
-      this.authzService.assertPropertyAccess(currentUser, query.locationId);
+      const prop = await this.prisma.location.findUnique({
+        where: { id: query.locationId },
+        select: { id: true, companyId: true },
+      });
+      if (!prop) {
+        throw new NotFoundException(`Property '${query.locationId}' not found.`);
+      }
+      this.authzService.assertPropertyAccess(currentUser, query.locationId, prop.companyId);
       where.locationId = query.locationId;
-    } else if (currentUser && currentUser.role !== 'SUPER_ADMIN' && currentUser.role !== 'OWNER' && currentUser.role !== 'CLIENT_ADMIN') {
+    } else if (currentUser && currentUser.role !== 'SUPER_ADMIN' && currentUser.role !== 'OWNER') {
       const assigned = currentUser.assignedLocationIds || [];
       where.locationId = { in: assigned.length > 0 ? assigned : ['none'] };
     }
@@ -383,7 +319,7 @@ export class WorkShiftService {
       where,
       include: {
         user: { select: { id: true, employeeNumber: true, firstName: true, lastName: true } },
-        location: { select: { id: true, name: true, locationCode: true, operationalConfig: true } },
+        location: { select: { id: true, name: true, locationCode: true, operationalConfig: true, companyId: true } },
         department: { select: { id: true, name: true, deptCode: true } },
         position: { select: { id: true, title: true, code: true } },
         logs: { orderBy: { timestamp: 'asc' } },
@@ -395,7 +331,7 @@ export class WorkShiftService {
 
     const now = new Date();
     return shifts.map((s) => {
-      const masked: any = this.authzService.maskFinancialFields(s, currentUser, s.locationId);
+      const masked: any = this.authzService.maskFinancialFields(s, currentUser, s.locationId, s.location?.companyId);
       const maxMins = s.location?.operationalConfig?.maxShiftDurationMinutes || 960;
       const elapsedMins = (now.getTime() - new Date(s.clockInTimestamp).getTime()) / (1000 * 60);
       const isOverdue = s.status === 'OPEN' && elapsedMins > maxMins;
@@ -428,7 +364,90 @@ export class WorkShiftService {
       this.authzService.assertPropertyAccess(currentUser, shift.locationId, companyId);
     }
 
-    return this.authzService.maskFinancialFields(shift, currentUser, shift.locationId);
+    return this.authzService.maskFinancialFields(shift, currentUser, shift.locationId, companyId);
+  }
+
+  /**
+   * Evaluates employee active shift state for Kiosk status screen without mutating any data.
+   * Pure read-only method complying with Phase 4 Constraint 4:
+   * - Does NOT silently modify WorkShift or AttendanceLog
+   * - AttendanceLog remains immutable
+   * - Never fabricates punches
+   * - Exposes ZERO financial fields
+   */
+  async getEmployeeShiftState(userId: string, locationId: string, timestamp: Date = new Date()) {
+    const openShift = await this.prisma.workShift.findFirst({
+      where: { userId, status: 'OPEN' },
+      include: {
+        location: {
+          select: {
+            id: true,
+            name: true,
+            locationCode: true,
+            timezone: true,
+            operationalConfig: true,
+          },
+        },
+        department: { select: { id: true, name: true, deptCode: true } },
+        position: { select: { id: true, title: true, code: true } },
+        logs: { orderBy: { timestamp: 'asc' } },
+      },
+      orderBy: { clockInTimestamp: 'desc' },
+    });
+
+    if (!openShift) {
+      const lastShift = await this.prisma.workShift.findFirst({
+        where: { userId, locationId },
+        include: {
+          logs: { orderBy: { timestamp: 'desc' }, take: 1 },
+        },
+        orderBy: { clockInTimestamp: 'desc' },
+      });
+
+      const lastLog = lastShift?.logs?.[0];
+
+      return {
+        hasActiveShift: false,
+        currentStatus: 'CLOCKED_OUT' as const,
+        activeShift: null,
+        lastPunch: lastLog
+          ? {
+              type: lastLog.punchType,
+              timestamp: lastLog.timestamp,
+            }
+          : null,
+        allowedActions: evaluateShiftState(userId, locationId, null, [], timestamp).allowedActions,
+        serverTime: timestamp.toISOString(),
+      };
+    }
+
+    const logs = openShift.logs || [];
+    const lastLog = logs[logs.length - 1];
+    const lastPunchType = lastLog?.punchType || AttendanceType.CLOCK_IN;
+    const config = openShift.location?.operationalConfig ?? await this.prisma.propertyOperationalConfig.findUnique({ where: { locationId: openShift.locationId } });
+    const { isOverdue, currentStatus, allowedActions } = evaluateShiftState(userId, locationId, openShift, logs, timestamp, config?.maxShiftDurationMinutes ?? 960);
+
+    return {
+      hasActiveShift: true,
+      currentStatus,
+      activeShift: {
+        id: openShift.id,
+        clockInTimestamp: openShift.clockInTimestamp,
+        department: openShift.department ? { id: openShift.department.id, name: openShift.department.name } : null,
+        position: openShift.position ? { id: openShift.position.id, title: openShift.position.title } : null,
+        isOverdue,
+        lastPunchType,
+        lastPunchTimestamp: lastLog?.timestamp || openShift.clockInTimestamp,
+      },
+      lastPunch: lastLog
+        ? {
+            type: lastLog.punchType,
+            timestamp: lastLog.timestamp,
+          }
+        : null,
+      allowedActions,
+      serverTime: timestamp.toISOString(),
+    };
   }
 
   /**

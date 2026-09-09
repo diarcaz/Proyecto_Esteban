@@ -1,11 +1,14 @@
-import { Controller, Get, Post, Body, BadRequestException, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, BadRequestException, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { SchedulesService } from '../../application/services/schedules.service';
 import { Roles } from '@adapters/decorators/roles-and-locations.decorator';
 import { UserRole } from '@domain/entities/user.entity';
+import { TenantGuard } from '@adapters/guards/tenant.guard';
+import { PermissionsGuard } from '@adapters/guards/permissions.guard';
 
 @ApiTags('Schedules')
 @Controller('api/v1/schedules')
+@UseGuards(TenantGuard, PermissionsGuard)
 export class SchedulesController {
   constructor(private readonly schedulesService: SchedulesService) {}
 

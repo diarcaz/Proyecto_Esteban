@@ -72,7 +72,7 @@ export class StaffService {
 
     if (!currentUser || currentUser.role === 'SUPER_ADMIN') {
       isGlobalTenantView = true;
-    } else if (currentUser.role === 'OWNER' || currentUser.role === 'CLIENT_ADMIN') {
+    } else if (currentUser.role === 'OWNER') {
       isGlobalTenantView = true;
     } else {
       const assigned = currentUser.assignedLocationIds || [];
@@ -124,8 +124,8 @@ export class StaffService {
 
     const canViewPayRate = currentUser
       ? (isGlobalTenantView
-          ? this.authzService.hasPermission(currentUser, Permission.VIEW_PAY_RATE)
-          : effectivePropertyIds!.some((pId) => this.authzService.hasPermission(currentUser, Permission.VIEW_PAY_RATE, pId)))
+          ? this.authzService.hasCompanyPermission(currentUser, Permission.VIEW_PAY_RATE, currentUser.companyId)
+          : effectivePropertyIds!.some((pId) => this.authzService.hasPermission(currentUser, Permission.VIEW_PAY_RATE, pId, currentUser.companyId)))
       : true;
 
     const users = await this.prisma.user.findMany({
@@ -151,7 +151,7 @@ export class StaffService {
       const primaryLocId = empPropIds[0] || null;
 
       // Apply service-level financial masking (defense-in-depth)
-      const masked = this.authzService.maskFinancialFields(safeUser, currentUser, primaryLocId || undefined);
+      const masked = this.authzService.maskFinancialFields(safeUser, currentUser, primaryLocId || undefined, currentUser?.companyId);
 
       return {
         ...masked,
@@ -191,8 +191,8 @@ export class StaffService {
 
     const canViewPayRate = currentUser
       ? (sharedPropIds.length > 0
-          ? sharedPropIds.some((pId) => this.authzService.hasPermission(currentUser, Permission.VIEW_PAY_RATE, pId))
-          : this.authzService.hasPermission(currentUser, Permission.VIEW_PAY_RATE))
+          ? sharedPropIds.some((pId) => this.authzService.hasPermission(currentUser, Permission.VIEW_PAY_RATE, pId, currentUser.companyId))
+          : this.authzService.hasCompanyPermission(currentUser, Permission.VIEW_PAY_RATE, currentUser.companyId))
       : true;
 
     const user = await this.prisma.user.findUnique({
@@ -210,7 +210,7 @@ export class StaffService {
     const safeUser = this.authzService.filterUserAssignments(rawUser, currentUser, sharedPropIds);
 
     const primarySharedLocId = sharedPropIds[0] || undefined;
-    const masked = this.authzService.maskFinancialFields(safeUser, currentUser, primarySharedLocId);
+    const masked = this.authzService.maskFinancialFields(safeUser, currentUser, primarySharedLocId, currentUser?.companyId);
 
     return {
       ...masked,
@@ -253,7 +253,7 @@ export class StaffService {
     // 2. Determine which shared property grants VIEW_EMPLOYEE_PIN
     let authorizingPropId: string | undefined = undefined;
 
-    if (currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'OWNER' || currentUser.role === 'CLIENT_ADMIN') {
+    if (currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'OWNER') {
       authorizingPropId = sharedPropIds[0] || undefined;
     } else {
       authorizingPropId = sharedPropIds.find((pId) =>
@@ -261,7 +261,7 @@ export class StaffService {
       );
     }
 
-    if (!authorizingPropId && currentUser.role !== 'SUPER_ADMIN' && currentUser.role !== 'OWNER' && currentUser.role !== 'CLIENT_ADMIN') {
+    if (!authorizingPropId && currentUser.role !== 'SUPER_ADMIN' && currentUser.role !== 'OWNER') {
       throw new ForbiddenException(
         `Required permission '${Permission.VIEW_EMPLOYEE_PIN}' is missing for employee ${user.employeeNumber} in authorized properties.`,
       );
@@ -329,7 +329,7 @@ export class StaffService {
     // 2. Determine which shared property grants RESET_EMPLOYEE_PIN
     let authorizingPropId: string | undefined = undefined;
 
-    if (currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'OWNER' || currentUser.role === 'CLIENT_ADMIN') {
+    if (currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'OWNER') {
       authorizingPropId = sharedPropIds[0] || undefined;
     } else {
       authorizingPropId = sharedPropIds.find((pId) =>
@@ -337,7 +337,7 @@ export class StaffService {
       );
     }
 
-    if (!authorizingPropId && currentUser.role !== 'SUPER_ADMIN' && currentUser.role !== 'OWNER' && currentUser.role !== 'CLIENT_ADMIN') {
+    if (!authorizingPropId && currentUser.role !== 'SUPER_ADMIN' && currentUser.role !== 'OWNER') {
       throw new ForbiddenException(
         `Required permission '${Permission.RESET_EMPLOYEE_PIN}' is missing for employee ${user.employeeNumber} in authorized properties.`,
       );
@@ -380,7 +380,14 @@ export class StaffService {
       this.authzService.assertPrivilegeEscalationSafety(currentUser, dto.role, dto.permissions);
 
       if (dto.locationId) {
-        this.authzService.assertPropertyAccess(currentUser, dto.locationId);
+        // Phase 3.2 (F): Resolve property companyId from DB for fail-closed property access check
+        const targetProp = await this.prisma.location.findUnique({
+          where: { id: dto.locationId },
+          select: { companyId: true },
+        });
+        if (targetProp) {
+          this.authzService.assertPropertyAccess(currentUser, dto.locationId, targetProp.companyId);
+        }
       }
     }
 
@@ -396,7 +403,9 @@ export class StaffService {
     const pinCodeEncrypted = dto.pinCode ? encryptPin(dto.pinCode) : null;
 
     const canViewPayRate = currentUser
-      ? this.authzService.hasPermission(currentUser, Permission.VIEW_PAY_RATE, dto.locationId)
+      ? (dto.locationId
+          ? this.authzService.hasPermission(currentUser, Permission.VIEW_PAY_RATE, dto.locationId, targetCompanyId)
+          : this.authzService.hasCompanyPermission(currentUser, Permission.VIEW_PAY_RATE, targetCompanyId))
       : true;
 
     const user = await this.prisma.user.create({
@@ -440,7 +449,7 @@ export class StaffService {
       });
     }
 
-    const masked = this.authzService.maskFinancialFields(user, currentUser, dto.locationId);
+    const masked = this.authzService.maskFinancialFields(user, currentUser, dto.locationId, targetCompanyId);
     return {
       ...masked,
       hasPin: !!pinCodeHash,
@@ -488,7 +497,9 @@ export class StaffService {
 
     const primaryLoc = dto.locationId || sharedPropIds[0];
     const canViewPayRate = currentUser
-      ? this.authzService.hasPermission(currentUser, Permission.VIEW_PAY_RATE, primaryLoc)
+      ? (primaryLoc
+          ? this.authzService.hasPermission(currentUser, Permission.VIEW_PAY_RATE, primaryLoc, user.companyId)
+          : this.authzService.hasCompanyPermission(currentUser, Permission.VIEW_PAY_RATE, user.companyId))
       : true;
 
     const updated = await this.prisma.user.update({
@@ -528,7 +539,7 @@ export class StaffService {
     }
 
     const safeUser = this.authzService.filterUserAssignments(updated, currentUser, sharedPropIds);
-    const masked = this.authzService.maskFinancialFields(safeUser, currentUser, primaryLoc);
+    const masked = this.authzService.maskFinancialFields(safeUser, currentUser, primaryLoc, user.companyId);
 
     return {
       ...masked,

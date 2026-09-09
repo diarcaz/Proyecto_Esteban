@@ -2,6 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { Bell, AlertCircle, Clock, ShieldAlert, CheckCircle2, X } from 'lucide-react';
+import { useAuthStore } from '@/store/use-auth-store';
+import { useLocationStore } from '@/store/use-location-store';
+import { can } from '@/lib/admin-access';
+import { API_BASE } from '@/lib/api-client';
 import { audioEngine } from '@/lib/audio-feedback';
 
 export interface AlertItem {
@@ -14,19 +18,23 @@ export interface AlertItem {
 }
 
 export function NotificationBell() {
+  const { user, token } = useAuthStore();
+  const { selectedLocationId } = useLocationStore();
+  const permitted = can(user, 'TIME_VIEW', selectedLocationId);
   const [isOpen, setIsOpen] = useState(false);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
 
   const unreadCount = alerts.filter((a) => !a.read).length;
 
   useEffect(() => {
-    // Listen for WebSocket events or simulated real-time events
+    setAlerts([]);
+    if (!token || !permitted) return;
     try {
       const { io } = require('socket.io-client');
-      const socket = io('http://localhost:3001/events', { autoConnect: false });
+      const socket = io(new URL(API_BASE).origin + '/events', { autoConnect: false, auth: { token } });
 
+      socket.on('connect', () => socket.emit('subscribeSupervisorAlerts', selectedLocationId === 'ALL' ? {} : { propertyId: selectedLocationId }));
       socket.connect();
-      socket.emit('subscribeSupervisorAlerts', { locationCode: 'ALL' });
 
       socket.on('attendanceAlert', (data: any) => {
         audioEngine.playErrorBeep();
@@ -47,7 +55,7 @@ export function NotificationBell() {
         socket.disconnect();
       };
     } catch (e) {}
-  }, []);
+  }, [token, permitted, selectedLocationId]);
 
   const markAllAsRead = () => {
     setAlerts(alerts.map((a) => ({ ...a, read: true })));

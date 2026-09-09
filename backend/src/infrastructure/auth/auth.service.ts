@@ -26,7 +26,7 @@ export class AuthService {
 
     const user = await (this.prisma as any).user.findUnique({
       where: { email: dto.email },
-      include: { assignments: true },
+      include: { assignments: true, propertyAccess: true, employeeAssignments: { where: { active: true, effectiveFrom: { lte: new Date() }, OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: new Date() } }] } } },
     });
 
     if (!user) {
@@ -62,7 +62,10 @@ export class AuthService {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
-        assignedLocationIds: (user.assignments || []).map((a: any) => a.locationId),
+        companyId: user.companyId,
+        permissions: user.permissions || [],
+        propertyAccess: (user.propertyAccess || []).map((p: any) => ({ propertyId: p.propertyId, permissions: p.permissions || [] })),
+        assignedLocationIds: [...new Set([...(user.assignments || []).map((a: any) => a.locationId), ...(user.employeeAssignments || []).map((a: any) => a.propertyId), ...(user.propertyAccess || []).map((a: any) => a.propertyId)])],
       },
       tokens,
     };

@@ -3,9 +3,15 @@ import { AppModule } from './app.module';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
+import { validatePinEncryptionKeyOrDie } from './infrastructure/security/pin-encryption.util';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
+
+  // Phase 3.2 (K): Fail-fast startup validation — MUST run before NestFactory.create
+  validatePinEncryptionKeyOrDie();
+  logger.log('✓ PIN_ENCRYPTION_KEY validated successfully.');
+
   const app = await NestFactory.create(AppModule);
 
   // Security Headers via Helmet

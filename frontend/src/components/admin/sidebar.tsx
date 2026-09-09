@@ -1,4 +1,6 @@
 'use client';
+import { can, canOpenAdminRoute } from '@/lib/admin-access';
+
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -6,7 +8,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/use-auth-store';
 import { useLocationStore, isLocationMatching } from '@/store/use-location-store';
 import { staffApi } from '@/lib/api-client';
-import { MOCK_EMPLOYEES } from '@/lib/mock-data';
+
 import {
   LayoutDashboard,
   Clock,
@@ -41,10 +43,11 @@ export function Sidebar() {
   const { user, logout } = useAuthStore();
   const { selectedLocationId } = useLocationStore();
 
-  const isSuperAdmin = user?.role === 'SUPER_ADMIN' && user?.email === 'admin@nexustaff.com';
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   useEffect(() => {
     async function getStaffCount() {
+      if (!can(user, 'STAFF_VIEW', selectedLocationId)) { setStaffCount(null); return; }
       try {
         const list = await staffApi.list();
         if (Array.isArray(list)) {
@@ -61,11 +64,7 @@ export function Sidebar() {
           return;
         }
       } catch (e) {}
-      const mockFiltered = MOCK_EMPLOYEES.filter((emp) => {
-        if (emp.jobPositionCode === 'SUPER_ADMIN' || emp.employeeNumber?.startsWith('ADM-')) return false;
-        return isLocationMatching(emp.locationId, emp.locationCode, selectedLocationId);
-      });
-      setStaffCount(mockFiltered.length);
+      setStaffCount(null);
     }
     getStaffCount();
   }, [user, selectedLocationId, isSuperAdmin]);
@@ -75,13 +74,7 @@ export function Sidebar() {
     router.push('/admin/login');
   };
 
-  // Filter NAV_ITEMS according to user role
-  const visibleNavItems = NAV_ITEMS.filter((item) => {
-    if (item.superAdminOnly && !isSuperAdmin) {
-      return false;
-    }
-    return true;
-  });
+  const visibleNavItems = NAV_ITEMS.filter(item => canOpenAdminRoute(user, item.href, selectedLocationId));
 
   return (
     <aside
@@ -157,24 +150,8 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Footer Controls: Kiosk Launcher & Logout */}
+      {/* Footer Controls: Logout */}
       <div className="p-3 border-t border-slate-800 space-y-2">
-        <Link
-          href="/kiosk"
-          target="_blank"
-          className="flex items-center gap-3 rounded-2xl bg-slate-900/90 p-3 text-xs font-black text-blue-400 hover:bg-slate-800 hover:text-blue-300 border border-slate-800 transition-all shadow-md group"
-        >
-          <div className="h-7 w-7 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/20 group-hover:bg-blue-500 group-hover:text-white transition-colors">
-            <Tablet className="h-3.5 w-3.5" />
-          </div>
-          {!collapsed && (
-            <div className="flex flex-col">
-              <span className="text-white group-hover:text-blue-300">Open Tablet Kiosk</span>
-              <span className="text-[9px] text-slate-400 font-medium">Touchscreen Kiosk Mode</span>
-            </div>
-          )}
-        </Link>
-
         {/* Sign Out Button */}
         <button
           onClick={handleLogout}

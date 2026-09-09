@@ -53,29 +53,29 @@ export function isLocationMatching(itemLocId?: string, itemLocCode?: string, tar
 }
 
 export const useLocationStore = create<LocationState>((set, get) => ({
-  locations: MOCK_LOCATIONS,
+  locations: [],
   isLoading: false,
   selectedLocationId: 'ALL',
   setSelectedLocationId: (id: string) => set({ selectedLocationId: id }),
   fetchLocations: async () => {
-    set({ isLoading: true });
+    set({ isLoading: true, locations: [] });
     try {
       const data = await locationsApi.list();
       if (Array.isArray(data) && data.length > 0) {
         const mapped: LocationMock[] = data.map((loc: any) => ({
           id: loc.id,
           name: loc.name,
-          code: loc.locationCode || loc.code || 'LOC-001',
+          code: loc.code,
           address: loc.address || '',
           city: loc.city || loc.address || '',
           activeStaffCount: loc._count?.assignments || loc.assignments?.length || 0,
-          kioskCode: loc.locationCode?.split('-')[1] || '1001',
+          kioskCode: loc.kioskCode,
         }));
         set({ locations: mapped, isLoading: false });
         return;
       }
     } catch (e) {
-      console.warn('Could not fetch locations from backend API, using fallback store:', e);
+      console.warn('Could not fetch authorized properties.');
     }
     set({ isLoading: false });
   },

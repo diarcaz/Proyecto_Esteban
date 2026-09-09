@@ -1,4 +1,5 @@
-import { IsEnum, IsNotEmpty, IsOptional, IsString, IsDateString, IsObject } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, IsDateString, IsObject, Matches, IsUUID, ValidateIf } from 'class-validator';
 import { AttendanceType, AttendanceMethod } from '@domain/entities/attendance-log.entity';
 
 export class StandardClockDto {
@@ -23,21 +24,29 @@ export class StandardClockDto {
   location_coordinates?: { latitude: number; longitude: number; accuracy?: number };
 }
 
-export class KioskClockDto {
+export class KioskStatusDto {
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   @IsString()
   @IsNotEmpty()
   employee_number!: string;
 
   @IsString()
-  @IsNotEmpty()
+  @Matches(/^\d{6}$/, { message: 'PIN must contain exactly 6 digits.' })
   pin_code!: string;
 
+  @ValidateIf((o, value) => value !== undefined || o.location_code === undefined)
+  @IsUUID()
+  property_id?: string;
+
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @ValidateIf((o, value) => value !== undefined)
   @IsString()
   @IsNotEmpty()
-  location_code!: string;
+  location_code?: string;
+}
 
+export class KioskClockDto extends KioskStatusDto {
   @IsEnum(AttendanceType)
-  @IsNotEmpty()
   type!: AttendanceType;
 
   @IsOptional()

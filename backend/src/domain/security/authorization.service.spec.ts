@@ -1,9 +1,13 @@
+import { runPhase42Tests } from './phase42-browser-fixes.spec';
+import { runPhase41Tests } from './phase41-remediation.spec';
 import * as assert from 'assert';
 import { AuthorizationService, AuthUserContext } from './authorization.service';
 import { Permission } from '../permissions/permission.enum';
 import { runRouteGuardSecurityTests } from './route-guard-security.spec';
 import { runStaffServiceSecurityTests } from './staff-service-security.spec';
 import { runWorkShiftServiceTests } from './work-shift-service.spec';
+import { runPhase32SecurityAuditTests } from './phase32-security-audit.spec';
+import { runPhase4PortalClockTests } from './phase4-portal-clock.spec';
 
 export function runAuthorizationTests() {
   const authzService = new AuthorizationService();
@@ -114,7 +118,9 @@ if (require.main === module) {
     runRouteGuardSecurityTests(),
     runStaffServiceSecurityTests(),
     runWorkShiftServiceTests(),
-  ]).catch((err) => {
+    runPhase32SecurityAuditTests(),
+    runPhase4PortalClockTests(),
+  ]).then(() => runPhase41Tests()).then(() => runPhase42Tests()).catch((err) => {
     console.error('❌ SECURITY TEST FAILURE:', err);
     process.exit(1);
   });

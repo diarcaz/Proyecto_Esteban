@@ -1,4 +1,4 @@
-import { Injectable, OnModuleDestroy, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, OnModuleInit, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
@@ -22,6 +22,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       maxRetriesPerRequest: 1,
       enableOfflineQueue: false,
     });
+
+    void this.client.connect().catch(() => this.logger.warn('Redis unavailable'));
 
     this.client.on('error', (err) => {
       this.logger.warn(`Redis connection status: ${err.message}`);
@@ -59,30 +61,41 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     } catch {}
   }
 
-  async incrementFailedAttempts(key: string, ttlSeconds: number = 900): Promise<number> {
+  async incrementFailedAttempts(key: string, ttlSeconds: number = 900, strict = false): Promise<number> {
     try {
+      if (strict) {
+        const count = Number(await this.client.eval("local n=redis.call('INCR',KEYS[1]); if redis.call('TTL',KEYS[1])<0 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end; return n", 1, `failed_attempts:${key}`, ttlSeconds));
+        if (!Number.isSafeInteger(count) || count < 1) throw new Error('Invalid counter');
+        return count;
+      }
       const attempts = await this.client.incr(`failed_attempts:${key}`);
       if (attempts === 1) {
         await this.client.expire(`failed_attempts:${key}`, ttlSeconds);
       }
       return attempts;
     } catch {
+      if (strict) throw new ServiceUnavailableException('Clock authentication temporarily unavailable. Please try later.');
       return 0;
     }
   }
 
-  async getFailedAttempts(key: string): Promise<number> {
+  async getFailedAttempts(key: string, strict = false): Promise<number> {
     try {
       const val = await this.client.get(`failed_attempts:${key}`);
-      return val ? parseInt(val, 10) : 0;
+      const count = val === null ? 0 : Number(val);
+      if (!Number.isSafeInteger(count) || count < 0) throw new Error('Invalid counter');
+      return count;
     } catch {
+      if (strict) throw new ServiceUnavailableException('Clock authentication temporarily unavailable. Please try later.');
       return 0;
     }
   }
 
-  async resetFailedAttempts(key: string): Promise<void> {
+  async resetFailedAttempts(key: string, strict = false): Promise<void> {
     try {
       await this.client.del(`failed_attempts:${key}`);
-    } catch {}
+    } catch {
+      if (strict) throw new ServiceUnavailableException('Clock authentication temporarily unavailable. Please try later.');
+    }
   }
 }

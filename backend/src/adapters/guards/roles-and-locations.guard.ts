@@ -1,3 +1,4 @@
+import { PROPERTY_READ } from '../decorators/property-read.decorator';
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../decorators/roles-and-locations.decorator';
@@ -36,12 +37,16 @@ export class RolesAndLocationsGuard implements CanActivate {
       }
     }
 
-    const locationId = request.headers['x-location-id'] || request.params.locationId || request.body.location_id || request.query.location_id;
+    const contexts = [request.headers?.['x-location-id'], request.headers?.['x-property-id'], request.params?.locationId, request.params?.propertyId, request.body?.location_id, request.body?.property_id, request.query?.location_id, request.query?.property_id].filter(v => v !== undefined);
+    if (contexts.some(v => typeof v !== 'string' || !v.trim()) || new Set(contexts).size > 1) throw new ForbiddenException('Conflicting or invalid property context.');
+    const locationId = contexts[0];
 
     if (user.role === UserRole.SUPER_ADMIN) {
       return true;
     }
 
+    // These list routes perform authoritative DB scope checks in PermissionsGuard and their service.
+    if (this.reflector.get(PROPERTY_READ, context.getHandler())) return true;
     const assigned: string[] = user.assignedLocationIds || [];
     if (assigned.length === 0) {
       throw new ForbiddenException('User has no assigned branch locations.');

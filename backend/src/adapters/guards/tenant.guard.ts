@@ -28,7 +28,7 @@ export class TenantGuard implements CanActivate {
       return true;
     }
 
-    const targetCompanyId = request.headers['x-company-id'] || request.params.companyId || request.query.company_id || request.body.company_id;
+    const targetCompanyId = request.headers['x-company-id'] || request.params?.companyId || request.query?.company_id || request.body?.company_id;
 
     if (targetCompanyId) {
       if (user.companyId && user.companyId !== targetCompanyId) {

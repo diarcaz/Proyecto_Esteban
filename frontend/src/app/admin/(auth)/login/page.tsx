@@ -24,10 +24,10 @@ export default function AdminLoginPage() {
       if (success) {
         router.push('/admin');
       } else {
-        setError('Invalid access credentials. Please verify your email and password.');
+        setError('Invalid access credentials or unauthorized role. Note: Workers must clock via /clock kiosk.');
       }
-    } catch (err) {
-      setError('An error occurred while attempting to log in.');
+    } catch (err: any) {
+      setError(err?.message || 'An error occurred while attempting to log in.');
     } finally {
       setLoading(false);
     }

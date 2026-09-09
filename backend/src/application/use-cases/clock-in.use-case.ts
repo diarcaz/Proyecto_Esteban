@@ -1,44 +1,31 @@
-import { Inject, Injectable, ForbiddenException } from '@nestjs/common';
-import { I_ATTENDANCE_REPOSITORY, IAttendanceRepository } from '@domain/repositories/attendance.repository.interface';
-import { AttendanceLogEntity, AttendanceMethod, AttendanceType, AttendanceStatus, GeoCoordinates, DeviceInfo } from '@domain/entities/attendance-log.entity';
+/**
+ * @deprecated Phase 3.2 (M): This legacy use-case bypassed the WorkShift-based attendance model.
+ * All clock-in operations MUST use AttendanceService.processStandardClock() or processKioskClock(),
+ * which delegate to WorkShiftService.processPunchSequence() for full lifecycle management.
+ *
+ * This file is retained for reference only and MUST NOT be used in production.
+ * No active import references exist.
+ */
+
+import { Injectable, ForbiddenException } from '@nestjs/common';
 
 export interface ClockInInputDto {
   userId: string;
   locationId: string;
-  method: AttendanceMethod;
+  method: string;
   timestamp?: Date;
-  deviceInfo?: DeviceInfo;
-  locationCoordinates?: GeoCoordinates;
+  deviceInfo?: Record<string, any>;
+  locationCoordinates?: { latitude: number; longitude: number; accuracy?: number };
 }
 
+/**
+ * @deprecated Use AttendanceService.processStandardClock() or processKioskClock() instead.
+ */
 @Injectable()
 export class ClockInUseCase {
-  constructor(
-    @Inject(I_ATTENDANCE_REPOSITORY)
-    private readonly attendanceRepo: IAttendanceRepository,
-  ) {}
-
-  async execute(input: ClockInInputDto): Promise<AttendanceLogEntity> {
-    const timestamp = input.timestamp || new Date();
-
-    const latestLog = await this.attendanceRepo.findLatestLogForUser(input.userId);
-    if (latestLog && latestLog.type === AttendanceType.CLOCK_IN) {
-      throw new ForbiddenException('User is already clocked in.');
-    }
-
-    const attendanceLog = await this.attendanceRepo.create({
-      userId: input.userId,
-      locationId: input.locationId,
-      type: AttendanceType.CLOCK_IN,
-      method: input.method,
-      timestamp: timestamp,
-      takenLunch: false,
-      isOvertime: false,
-      deviceInfo: input.deviceInfo,
-      locationCoordinates: input.locationCoordinates,
-      status: AttendanceStatus.ON_TIME,
-    });
-
-    return attendanceLog;
+  async execute(_input: ClockInInputDto): Promise<never> {
+    throw new ForbiddenException(
+      'ClockInUseCase is deprecated (Phase 3.2). All clock-in operations must use AttendanceService → WorkShiftService pipeline.',
+    );
   }
 }

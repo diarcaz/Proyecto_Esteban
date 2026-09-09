@@ -2,11 +2,44 @@ import * as crypto from 'crypto';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12; // 12 bytes recommended for AES-GCM
+const REQUIRED_KEY_MIN_LENGTH = 16; // Minimum raw key length in characters
 
+/**
+ * Resolves and validates the PIN encryption key.
+ *
+ * Phase 3.2 (K): FAIL-FAST — hardcoded fallback REMOVED.
+ * If PIN_ENCRYPTION_KEY is absent or shorter than 16 characters:
+ * - Application startup MUST fail with a clear, actionable error.
+ * - This function throws immediately; it does NOT return a default key.
+ */
 function getEncryptionKey(): Buffer {
-  const rawKey = process.env.PIN_ENCRYPTION_KEY || 'nexustaff-default-pin-encryption-key-2026';
+  const rawKey = process.env.PIN_ENCRYPTION_KEY;
+
+  if (!rawKey || rawKey.trim().length < REQUIRED_KEY_MIN_LENGTH) {
+    throw new Error(
+      `FATAL: PIN_ENCRYPTION_KEY environment variable is missing or too short (minimum ${REQUIRED_KEY_MIN_LENGTH} characters). ` +
+      `Application CANNOT safely encrypt or decrypt employee PINs without a valid key. ` +
+      `Set PIN_ENCRYPTION_KEY in your .env file and restart the application.`,
+    );
+  }
+
   // Derive a 32-byte key using SHA-256 to ensure exact key length
   return crypto.createHash('sha256').update(rawKey).digest();
+}
+
+/**
+ * Validates that PIN_ENCRYPTION_KEY is configured before the application starts.
+ * Call this function during application bootstrap (e.g., in main.ts).
+ *
+ * Phase 3.2 (K): Fail-fast startup validation.
+ */
+export function validatePinEncryptionKeyOrDie(): void {
+  try {
+    getEncryptionKey();
+  } catch (error: any) {
+    console.error(`\n\n  ✖ ${error.message}\n`);
+    process.exit(1);
+  }
 }
 
 /**

@@ -1,3 +1,5 @@
+import { resolvePropertyReadScope } from '@domain/security/property-read-scope';
+import { Permission } from '@domain/permissions/permission.enum';
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '@infrastructure/persistence/prisma/prisma.service';
 import { AuthorizationService } from '@domain/security/authorization.service';
@@ -9,28 +11,9 @@ export class LocationService {
     private readonly authzService: AuthorizationService,
   ) {}
 
-  async findAll(allowedLocationIds?: string[], currentUser?: any) {
-    const where: any = {};
-
-    // 1. Enforce Company isolation for non-SUPER_ADMIN
-    if (currentUser && currentUser.role !== 'SUPER_ADMIN') {
-      if (currentUser.companyId) {
-        where.companyId = currentUser.companyId;
-      }
-    }
-
-    // 2. Enforce Property scope for non-OWNER / non-SUPER_ADMIN
-    if (currentUser && currentUser.role !== 'SUPER_ADMIN' && currentUser.role !== 'OWNER' && currentUser.role !== 'CLIENT_ADMIN') {
-      const assignedIds = currentUser.assignedLocationIds || [];
-      if (allowedLocationIds && allowedLocationIds.length > 0) {
-        const filtered = allowedLocationIds.filter((id) => assignedIds.includes(id));
-        where.id = { in: filtered.length > 0 ? filtered : ['none'] };
-      } else {
-        where.id = { in: assignedIds.length > 0 ? assignedIds : ['none'] };
-      }
-    } else if (allowedLocationIds && allowedLocationIds.length > 0) {
-      where.id = { in: allowedLocationIds };
-    }
+  async findAll(allowedLocationIds?: string[], currentUser?: any, query: any = {}, headers: any = {}) {
+    const properties = await resolvePropertyReadScope(this.prisma, currentUser, query, headers, Permission.PROPERTY_VIEW);
+    const where = { id: { in: properties.map(p => p.id) }, ...(currentUser.role === 'SUPER_ADMIN' ? {} : { companyId: currentUser.companyId }) };
 
     const locs = await this.prisma.location.findMany({
       where,
@@ -46,6 +29,7 @@ export class LocationService {
       companyId: l.companyId,
       name: l.name,
       code: l.locationCode,
+      timezone: l.timezone,
       address: l.address,
       city: l.timezone,
       weekStartDay: l.operationalConfig?.weekStartDay || 'MONDAY',

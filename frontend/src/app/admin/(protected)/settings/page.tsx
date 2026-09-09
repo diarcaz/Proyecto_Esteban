@@ -66,7 +66,7 @@ const MOCK_AUDIT_LOGS: MockAuditLog[] = [
 
 export default function SettingsPage() {
   const { user } = useAuthStore();
-  const isSuperAdmin = user?.role === 'SUPER_ADMIN' && user?.email === 'admin@nexustaff.com';
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   const [overtimeThreshold, setOvertimeThreshold] = useState('8.0');
   const [gracePeriod, setGracePeriod] = useState('15');

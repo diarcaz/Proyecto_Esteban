@@ -1,0 +1,8 @@
+ALTER TABLE "public"."users"
+ADD COLUMN "pin_code_encrypted" TEXT;
+
+ALTER TYPE "public"."AttendanceType"
+ADD VALUE IF NOT EXISTS 'LUNCH2_START' BEFORE 'CLOCK_OUT';
+
+ALTER TYPE "public"."AttendanceType"
+ADD VALUE IF NOT EXISTS 'LUNCH2_END' BEFORE 'CLOCK_OUT';

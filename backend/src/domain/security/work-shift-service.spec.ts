@@ -78,6 +78,15 @@ export async function runWorkShiftServiceTests() {
 
   // Mock Prisma Service
   const mockPrisma: any = {
+    location: {
+      findUnique: async (args: any) => {
+        const id = args.where.id;
+        if (id === propA || id === propB) {
+          return { id, companyId: compAlpha, name: `Prop ${id}` };
+        }
+        return null;
+      },
+    },
     user: {
       findUnique: async (args: any) => dbUsers.find((u) => u.id === args.where.id) || null,
     },
@@ -94,6 +103,17 @@ export async function runWorkShiftServiceTests() {
           if (ea.effectiveUntil && new Date(ea.effectiveUntil) < effectiveFrom.lte) return false;
           return true;
         }) || null;
+      },
+      findMany: async (args: any) => {
+        const { userId, propertyId, active, effectiveFrom } = args.where || {};
+        return dbEmployeeAssignments.filter((ea) => {
+          if (userId && ea.userId !== userId) return false;
+          if (propertyId && ea.propertyId !== propertyId) return false;
+          if (active !== undefined && ea.active !== active) return false;
+          if (effectiveFrom?.lte && new Date(ea.effectiveFrom) > effectiveFrom.lte) return false;
+          if (ea.effectiveUntil && new Date(ea.effectiveUntil) < effectiveFrom.lte) return false;
+          return true;
+        });
       },
     },
     propertyOperationalConfig: {
@@ -237,6 +257,7 @@ export async function runWorkShiftServiceTests() {
         return args.data;
       },
     },
+    $queryRaw: async () => [],
     $transaction: async (fn: any) => await fn(mockPrisma),
   };
 
@@ -259,7 +280,7 @@ export async function runWorkShiftServiceTests() {
   const clockInTime2 = new Date('2026-09-04T10:05:00Z');
   await assert.rejects(
     async () => workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, clockInTime2),
-    (err: any) => err instanceof BadRequestException && err.message.includes('already has an open work shift'),
+    (err: any) => err instanceof BadRequestException && err.message.includes('Requested action is not allowed'),
     'TEST 2 FAILED: Second CLOCK_IN while open was not rejected',
   );
 
@@ -295,7 +316,7 @@ export async function runWorkShiftServiceTests() {
   dbAttendanceLogs.length = 0;
   await assert.rejects(
     async () => workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_OUT, AttendanceMethod.KIOSK_PIN, new Date()),
-    (err: any) => err instanceof BadRequestException && err.message.includes('without an open work shift'),
+    (err: any) => err instanceof BadRequestException && err.message.includes('Requested action is not allowed'),
     'TEST 5 FAILED: CLOCK_OUT without open shift was not rejected',
   );
 
@@ -305,7 +326,7 @@ export async function runWorkShiftServiceTests() {
   await workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, new Date());
   await assert.rejects(
     async () => workShiftService.processPunchSequence('worker-1', propA, AttendanceType.LUNCH_END, AttendanceMethod.KIOSK_PIN, new Date()),
-    (err: any) => err instanceof BadRequestException && err.message.includes('Must perform LUNCH_START'),
+    (err: any) => err instanceof BadRequestException && err.message.includes('Requested action is not allowed'),
     'TEST 6 FAILED: LUNCH_END without LUNCH_START was not rejected',
   );
 
@@ -315,7 +336,7 @@ export async function runWorkShiftServiceTests() {
   await workShiftService.processPunchSequence('worker-1', propA, AttendanceType.LUNCH_START, AttendanceMethod.KIOSK_PIN, new Date());
   await assert.rejects(
     async () => workShiftService.processPunchSequence('worker-1', propA, AttendanceType.LUNCH_START, AttendanceMethod.KIOSK_PIN, new Date()),
-    (err: any) => err instanceof BadRequestException && err.message.includes('Already on lunch break'),
+    (err: any) => err instanceof BadRequestException && err.message.includes('Requested action is not allowed'),
     'TEST 7 FAILED: Double LUNCH_START was not rejected',
   );
 
@@ -353,7 +374,7 @@ export async function runWorkShiftServiceTests() {
   // =========================================================================
   await assert.rejects(
     async () => workShiftService.processPunchSequence('worker-unassigned', propA, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, new Date()),
-    (err: any) => err instanceof ForbiddenException && err.message.includes('has no active assignment'),
+    (err: any) => err instanceof ForbiddenException && err.message.includes('No active employee assignment'),
     'TEST 11 FAILED: Unassigned property clock-in was not denied',
   );
 
@@ -362,7 +383,7 @@ export async function runWorkShiftServiceTests() {
   // =========================================================================
   await assert.rejects(
     async () => workShiftService.processPunchSequence('worker-1', propB, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, new Date()),
-    (err: any) => err instanceof ForbiddenException && err.message.includes('has no active assignment'),
+    (err: any) => err instanceof ForbiddenException && err.message.includes('No active employee assignment'),
     'TEST 12 FAILED: Expired EmployeeAssignment clock-in was not denied',
   );
 

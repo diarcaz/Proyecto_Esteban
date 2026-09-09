@@ -1,4 +1,7 @@
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { PROPERTY_READ } from '../decorators/property-read.decorator';
+import { resolvePropertyReadScope } from '@domain/security/property-read-scope';
+import { PrismaService } from '@infrastructure/persistence/prisma/prisma.service';
+import { Injectable, CanActivate, ExecutionContext, ForbiddenException, UnauthorizedException, Optional } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
@@ -10,9 +13,10 @@ export class PermissionsGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly authzService: AuthorizationService,
+    @Optional() private readonly prisma?: PrismaService,
   ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  canActivate(context: ExecutionContext): boolean | Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -31,15 +35,20 @@ export class PermissionsGuard implements CanActivate {
       throw new UnauthorizedException('User is not authenticated.');
     }
 
+    const propertyRead = this.reflector.get<Permission>(PROPERTY_READ, context.getHandler());
+    if (propertyRead) {
+      if (!this.prisma || !requiredPermissions.includes(propertyRead)) throw new ForbiddenException('Property authorization unavailable.');
+      return resolvePropertyReadScope(this.prisma, user, request.query || {}, request.headers || {}, propertyRead).then(() => true);
+    }
     const targetPropertyId =
       request.headers['x-property-id'] ||
       request.headers['x-location-id'] ||
-      request.params.propertyId ||
-      request.params.locationId ||
-      request.body.property_id ||
-      request.body.location_id ||
-      request.query.property_id ||
-      request.query.location_id;
+      request.params?.propertyId ||
+      request.params?.locationId ||
+      request.body?.property_id ||
+      request.body?.location_id ||
+      request.query?.property_id ||
+      request.query?.location_id;
 
     for (const permission of requiredPermissions) {
       if (!this.authzService.hasPermission(user, permission, targetPropertyId)) {
