@@ -3,7 +3,8 @@
  * Backend runs on port 3001. Frontend on port 3000.
  */
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3001/api/v1');
+if (!API_BASE) throw new Error('NEXT_PUBLIC_API_URL is required');
 
 function getAuthHeader(): Record<string, string> {
   if (typeof window !== 'undefined') {
@@ -95,4 +96,16 @@ export const auditApi = {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
     return request<any>(`/audit-logs${qs}`);
   },
+};
+
+export const onboardingApi = {
+  catalog: (id: string) => request<any>(`/onboarding/properties/${id}/catalog`),
+  department: (id: string, data: any) => request<any>(`/onboarding/properties/${id}/departments`, { method: 'POST', body: JSON.stringify(data) }),
+  position: (id: string, data: any) => request<any>(`/onboarding/properties/${id}/positions`, { method: 'POST', body: JSON.stringify(data) }),
+  create: (data: any) => request<any>('/onboarding/employees', { method: 'POST', body: JSON.stringify(data) }),
+  details: (id: string) => request<any>(`/onboarding/employees/${id}`),
+  add: (id: string, data: any) => request<any>(`/onboarding/employees/${id}/assignments`, { method: 'POST', body: JSON.stringify(data) }),
+  deactivate: (id: string, assignmentId: string) => request<any>(`/onboarding/employees/${id}/assignments/${assignmentId}/deactivate`, { method: 'PATCH' }),
+  pin: (id: string) => request<any>(`/staff/${id}/pin`),
+  resetPin: (id: string, pinCode: string) => request<any>(`/staff/${id}/pin`, { method: 'PATCH', body: JSON.stringify({ pinCode }) }),
 };

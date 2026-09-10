@@ -1,10 +1,12 @@
+# Beta template only: operator must select persistent/backed-up service plans before client use.
+# No resources are provisioned by editing this file. Never reuse the old JWT secret.
 # Render Blueprint Configuration (Infrastructure as Code)
 # Project: NexuStaff (Enterprise Attendance & Staffing Management)
 
 services:
   # 1. Backend API Service (NestJS + Swagger + WebSockets)
   - type: web
-    name: nexustaff-backend
+    name: nexustaff-beta-backend
     runtime: docker
     dockerContext: ./backend
     dockerfilePath: ./backend/Dockerfile
@@ -17,18 +19,10 @@ services:
         value: production
       - key: DATABASE_URL
         fromDatabase:
-          name: nexustaff-db
+          name: nexustaff-beta-db
           property: connectionString
-      - key: REDIS_HOST
-        fromService:
-          type: redis
-          name: nexustaff-redis
-          property: host
-      - key: REDIS_PORT
-        fromService:
-          type: redis
-          name: nexustaff-redis
-          property: port
+      - key: REDIS_URL
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: PIN_ENCRYPTION_KEY
@@ -36,11 +30,11 @@ services:
       - key: JWT_EXPIRATION
         value: 7d
       - key: CORS_ORIGIN
-        value: https://nexustaff-frontend.onrender.com,http://localhost:3000
+        sync: false
 
   # 2. Frontend Application (Next.js 14 App Router)
   - type: web
-    name: nexustaff-frontend
+    name: nexustaff-beta-frontend
     runtime: docker
     dockerContext: ./frontend
     dockerfilePath: ./frontend/Dockerfile
@@ -49,17 +43,17 @@ services:
       - key: PORT
         value: 3000
       - key: NEXT_PUBLIC_API_URL
-        value: https://nexustaff-backend.onrender.com/api/v1
+        sync: false
 
   # 3. Redis Store (JWT Refresh Token Revocation & Cache)
   - type: redis
-    name: nexustaff-redis
+    name: nexustaff-beta-redis
     ipAllowList: []
     plan: free
 
 databases:
   # 4. Managed PostgreSQL Database
-  - name: nexustaff-db
-    databaseName: nexustaff_db
+  - name: nexustaff-beta-db
+    databaseName: nexustaff_beta
     user: nexustaff_user
     plan: free

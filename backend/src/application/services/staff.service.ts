@@ -397,6 +397,13 @@ export class StaffService {
         ? currentUser.companyId
         : dto.companyId || currentUser?.companyId;
 
+    if (currentUser) {
+      if (dto.locationId) {
+        const target = await this.prisma.location.findUnique({ where: { id: dto.locationId }, select: { companyId: true } });
+        if (!target) throw new BadRequestException('Property not found.');
+        this.authzService.assertPermission(currentUser, Permission.STAFF_CREATE, dto.locationId, target.companyId);
+      } else if (!this.authzService.hasCompanyPermission(currentUser, Permission.STAFF_CREATE, targetCompanyId)) throw new ForbiddenException('STAFF_CREATE permission required.');
+    }
     const rawPassword = dto.password || crypto.randomBytes(24).toString('hex');
     const passwordHash = await bcrypt.hash(rawPassword, 10);
     const pinCodeHash = dto.pinCode ? await bcrypt.hash(dto.pinCode, 10) : null;
@@ -492,6 +499,9 @@ export class StaffService {
       sharedPropIds = this.authzService.getEmployeePropertyIds(user);
     }
 
+    if (currentUser && !sharedPropIds.some(p => this.authzService.hasPermission(currentUser, Permission.STAFF_EDIT, p, user.companyId)) && !this.authzService.hasCompanyPermission(currentUser, Permission.STAFF_EDIT, user.companyId)) throw new ForbiddenException('STAFF_EDIT permission required.');
+    if (dto.pinCode && currentUser && !sharedPropIds.some(p => this.authzService.hasPermission(currentUser, Permission.RESET_EMPLOYEE_PIN, p, user.companyId)) && currentUser.role !== 'SUPER_ADMIN') throw new ForbiddenException('Use the authorized PIN reset flow.');
+    if (dto.pinCode && !/^\d{6}$/.test(dto.pinCode)) throw new BadRequestException('PIN code must be exactly 6 digits.');
     const pinCodeHash = dto.pinCode ? await bcrypt.hash(dto.pinCode, 10) : user.pinCodeHash;
     const pinCodeEncrypted = dto.pinCode ? encryptPin(dto.pinCode) : user.pinCodeEncrypted;
 
@@ -508,6 +518,7 @@ export class StaffService {
         firstName: dto.firstName ?? undefined,
         lastName: dto.lastName ?? undefined,
         jobPositionCode: dto.jobPositionCode ?? undefined,
+        status: dto.status === 'ACTIVE' || dto.status === 'TERMINATED' ? dto.status : undefined,
         role: dto.role ?? undefined,
         permissions: dto.permissions ?? undefined,
         pinCodeHash,

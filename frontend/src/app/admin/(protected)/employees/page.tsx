@@ -1,469 +1,102 @@
 'use client';
-
-import React, { useState, useEffect, useCallback } from 'react';
-import { staffApi } from '@/lib/api-client';
-import { MOCK_EMPLOYEES, EmployeeMock } from '@/lib/mock-data';
-import { useLocationStore, isLocationMatching } from '@/store/use-location-store';
+import { useEffect, useRef, useState } from 'react';
+import { locationsApi, staffApi, onboardingApi } from '@/lib/api-client';
 import { useAuthStore } from '@/store/use-auth-store';
-import { Users, Plus, Edit3, Trash2, Globe, AlertTriangle, CheckCircle2, RefreshCw, Loader2, Eye, EyeOff } from 'lucide-react';
-
+import { useLocationStore } from '@/store/use-location-store';
+import { can } from '@/lib/admin-access';
+const inputClass = 'w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-white';
+const buttonClass = 'rounded-lg bg-blue-600 px-3 py-2 text-white disabled:opacity-40';
+function localNow() { const now = new Date(); return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0,16); }
+function IdentityEditor({ detail, onSaved }: { detail: any; onSaved: () => void }) {
+  const [firstName,setFirstName]=useState(detail.firstName),[lastName,setLastName]=useState(detail.lastName),[error,setError]=useState(''),[saving,setSaving]=useState(false);
+  return <form className="flex flex-wrap gap-2" onSubmit={async e=>{e.preventDefault();setSaving(true);setError('');try{await staffApi.update(detail.id,{firstName,lastName});onSaved();}catch{setError('Employee changes were not saved.');}finally{setSaving(false);}}}>
+    <label>First name<input required className={inputClass} value={firstName} onChange={e=>setFirstName(e.target.value)}/></label><label>Last name<input required className={inputClass} value={lastName} onChange={e=>setLastName(e.target.value)}/></label><button disabled={saving} className={buttonClass}>Save employee details</button>{error&&<p role="alert">{error}</p>}
+  </form>;
+}
+const emptyAssignment = () => ({ propertyId: '', departmentId: '', positionId: '', effectiveFrom: localNow(), effectiveUntil: '', active: true });
 export default function EmployeesPage() {
-  const { locations, selectedLocationId, fetchLocations } = useLocationStore();
-  const { user } = useAuthStore();
-  const [employees, setEmployees] = useState<EmployeeMock[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [visiblePins, setVisiblePins] = useState<Record<string, boolean>>({});
-
-  const togglePinVisibility = (id: string) => {
-    setVisiblePins((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  const filteredEmployees = employees.filter((emp) => {
-    if (emp.jobPositionCode === 'SUPER_ADMIN' || emp.employeeNumber?.startsWith('ADM-')) {
-      return false;
-    }
-    return isLocationMatching(emp.locationId, emp.locationCode, selectedLocationId);
-  });
-  const [saving, setSaving] = useState(false);
-  const [apiError, setApiError] = useState<string | null>(null);
-
-  // Modal States
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [editingEmp, setEditingEmp] = useState<EmployeeMock | null>(null);
-  const [deletingEmp, setDeletingEmp] = useState<EmployeeMock | null>(null);
-  const [toastMessage, setToastMessage] = useState<{ msg: string; isError?: boolean } | null>(null);
-
-  // Form State
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    employeeNumber: '',
-    jobPositionCode: 'SUPERVISOR',
-    locationCode: 'MID-1001',
-    locationId: 'loc-mid',
-    pinCode: '',
-    preferredLanguage: 'es' as 'es' | 'en',
-  });
-
-  const showToast = (msg: string, isError = false) => {
-    setToastMessage({ msg, isError });
-    setTimeout(() => setToastMessage(null), 3500);
-  };
-
-  // ── Fetch staff from API (falls back to mock data on error) ──────────────
-  const fetchStaff = useCallback(async () => {
-    setLoading(true);
-    setApiError(null);
-    try {
-      const data = await staffApi.list();
-      if (data && data.length > 0) {
-        const mapped: EmployeeMock[] = data.map((item: any) => ({
-          id: item.id,
-          employeeNumber: item.employeeNumber || 'EMP-000',
-          firstName: item.firstName || '',
-          lastName: item.lastName || '',
-          jobPositionCode: item.jobPositionCode || 'STAFF',
-          locationId: item.assignments?.[0]?.locationId || item.locationId || 'loc-mid',
-          locationCode: item.assignments?.[0]?.location?.locationCode || item.locationCode || 'MID-1001',
-          pinCode: item.pinCode ? item.pinCode : (item.hasPin ? 'Configurado' : ''),
-          preferredLanguage: item.preferredLanguage || 'es',
-        }));
-        setEmployees(mapped);
-      } else {
-        // Backend returned empty – seed not applied yet, use mock data
-        setEmployees(MOCK_EMPLOYEES);
-        setApiError('Using demo data (database is empty — run seed first)');
-      }
-    } catch {
-      // Backend not running or unreachable → gracefully fall back to mock data
-      setEmployees(MOCK_EMPLOYEES);
-      setApiError('Backend offline — showing demo data (changes persist in-session only)');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  const { user, token } = useAuthStore();
+  const { selectedLocationId } = useLocationStore();
+  const [employees, setEmployees] = useState<any[]>([]), [properties, setProperties] = useState<any[]>([]);
+  const [detail, setDetail] = useState<any>(null), [selectedId, setSelectedId] = useState('');
+  const [mode, setMode] = useState<'create'|'assignment'|null>(null), [assignment, setAssignment] = useState(emptyAssignment);
+  const [identity, setIdentity] = useState({ firstName: '', lastName: '', employeeNumber: '', email: '', pinCode: '', status: 'ACTIVE' });
+  const [catalog, setCatalog] = useState<any>(null), [catalogVersion, setCatalogVersion] = useState(0);
+  const [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false);
+  const [pin, setPin] = useState<string|null>(null), [newPin, setNewPin] = useState('');
+  const [newDepartment, setNewDepartment] = useState({ name: '', code: '' }), [newPosition, setNewPosition] = useState({ name: '', code: '' });
+  const generation = useRef(0);
+  async function refresh() {
+    const data = await staffApi.list();
+    if (!Array.isArray(data)) throw new Error('Unable to load employees.');
+    setEmployees(data.filter(e => e.role === 'WORKER'));
+  }
   useEffect(() => {
-    fetchStaff();
-    fetchLocations();
-  }, [fetchStaff, fetchLocations]);
-
-  // Open Add Modal
-  const openAddModal = () => {
-    const defaultLoc = locations.find((l) => isLocationMatching(l.id, l.code, selectedLocationId)) || locations[0];
-    setFormData({
-      firstName: '',
-      lastName: '',
-      employeeNumber: `EMP-${Math.floor(1000 + Math.random() * 9000)}`,
-      jobPositionCode: 'SUPERVISOR',
-      locationCode: defaultLoc ? defaultLoc.code : 'MID-1001',
-      locationId: defaultLoc ? defaultLoc.id : 'loc-mid',
-      pinCode: '',
-      preferredLanguage: 'es',
-    });
-    setShowAddModal(true);
-  };
-
-  // Open Edit Modal
-  const openEditModal = (emp: EmployeeMock) => {
-    setEditingEmp(emp);
-    setFormData({
-      firstName: emp.firstName,
-      lastName: emp.lastName,
-      employeeNumber: emp.employeeNumber,
-      jobPositionCode: emp.jobPositionCode,
-      locationCode: emp.locationCode,
-      locationId: emp.locationId,
-      pinCode: emp.pinCode,
-      preferredLanguage: emp.preferredLanguage,
-    });
-  };
-
-  // ── CREATE staff member ──────────────────────────────────────────────────
-  const handleCreateEmployee = async (e: React.FormEvent) => {
+    let active = true; setEmployees([]); setDetail(null); setSelectedId(''); setPin(null); setMode(null);
+    Promise.all([staffApi.list(), locationsApi.list()]).then(([staff, locations]) => {
+      if (active) { setEmployees(staff.filter((e:any) => e.role === 'WORKER')); setProperties(locations); }
+    }).catch(() => { if (active) setError('Unable to load employees/properties.'); });
+    return () => { active = false; generation.current++; };
+  }, [token]);
+  useEffect(() => {
+    let active = true; setCatalog(null);
+    if (assignment.propertyId) onboardingApi.catalog(assignment.propertyId).then(data => { if (active) setCatalog(data); }).catch(() => { if (active) setError('Unable to load property departments/positions.'); });
+    return () => { active = false; };
+  }, [assignment.propertyId, catalogVersion, token]);
+  useEffect(() => { if (!pin) return; const timer = setTimeout(() => setPin(null), 15000); return () => clearTimeout(timer); }, [pin]);
+  async function select(id:string) {
+    const current = ++generation.current; setSelectedId(id); setDetail(null); setPin(null); setNewPin(''); setMode(null);
+    try { const data = await onboardingApi.details(id); if (current === generation.current) setDetail(data); }
+    catch { if (current === generation.current) setError('Unable to load employee assignments.'); }
+  }
+  async function action(work:()=>Promise<void>) { setBusy(true); setError(''); setNotice(''); try { await work(); } catch (e:any) { setError(e.message || 'Operation failed. Nothing was confirmed saved.'); } finally { setBusy(false); } }
+  function open(mode:'create'|'assignment') { setMode(mode); setPin(null); setAssignment({ ...emptyAssignment(), propertyId: selectedLocationId !== 'ALL' ? selectedLocationId : '' }); setIdentity({ firstName:'', lastName:'', employeeNumber:'', email:'', pinCode:'', status:'ACTIVE' }); setCatalog(null); setError(''); }
+  async function submit(e:React.FormEvent) {
     e.preventDefault();
-    if (!formData.firstName || !formData.lastName || formData.pinCode.length !== 6) {
-      alert('Please fill out all required fields. PIN code must be exactly 6 digits.');
-      return;
-    }
-    const pinExists = employees.some((e) => e.pinCode === formData.pinCode);
-    if (pinExists) {
-      alert(`PIN code ${formData.pinCode} is already assigned to another staff member.`);
-      return;
-    }
-
-    setSaving(true);
-    try {
-      await staffApi.create({
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        employeeNumber: formData.employeeNumber,
-        jobPositionCode: formData.jobPositionCode,
-        locationId: formData.locationId,
-        pinCode: formData.pinCode,
-        preferredLanguage: formData.preferredLanguage,
-      });
-      await fetchStaff();
-      setShowAddModal(false);
-      showToast(`Staff member ${formData.firstName} ${formData.lastName} created and saved to database!`);
-    } catch (err: any) {
-      // Fallback: update local state
-      const created: EmployeeMock = {
-        id: `emp-${Date.now()}`,
-        employeeNumber: formData.employeeNumber,
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        jobPositionCode: formData.jobPositionCode,
-        locationId: formData.locationId,
-        locationCode: formData.locationCode,
-        pinCode: formData.pinCode,
-        preferredLanguage: formData.preferredLanguage,
-      };
-      setEmployees((prev) => [...prev, created]);
-      setShowAddModal(false);
-      showToast(`${formData.firstName} ${formData.lastName} added (demo mode — API: ${err.message})`, true);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // ── UPDATE staff member ──────────────────────────────────────────────────
-  const handleUpdateEmployee = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingEmp) return;
-    if (!formData.firstName || !formData.lastName || formData.pinCode.length !== 6) {
-      alert('Please fill out all required fields. PIN code must be exactly 6 digits.');
-      return;
-    }
-    const pinExists = employees.some((e) => e.id !== editingEmp.id && e.pinCode === formData.pinCode);
-    if (pinExists) {
-      alert(`PIN code ${formData.pinCode} is already assigned to another staff member.`);
-      return;
-    }
-
-    setSaving(true);
-    try {
-      await staffApi.update(editingEmp.id, {
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        jobPositionCode: formData.jobPositionCode,
-        locationId: formData.locationId,
-        pinCode: formData.pinCode,
-        preferredLanguage: formData.preferredLanguage,
-      });
-      await fetchStaff();
-      setEditingEmp(null);
-      showToast(`Staff member ${formData.firstName} ${formData.lastName} updated in database!`);
-    } catch (err: any) {
-      // Fallback: update local state
-      setEmployees((prev) =>
-        prev.map((emp) =>
-          emp.id === editingEmp.id
-            ? { ...emp, ...formData, locationId: formData.locationId }
-            : emp
-        )
-      );
-      setEditingEmp(null);
-      showToast(`Updated locally (API: ${err.message})`, true);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // ── DELETE staff member ──────────────────────────────────────────────────
-  const handleConfirmDelete = async () => {
-    if (!deletingEmp) return;
-    const name = `${deletingEmp.firstName} ${deletingEmp.lastName}`;
-    setSaving(true);
-    try {
-      await staffApi.remove(deletingEmp.id);
-      await fetchStaff();
-      setDeletingEmp(null);
-      showToast(`${name} deleted from database (Cascade Delete applied)!`);
-    } catch (err: any) {
-      // Fallback: update local state
-      setEmployees((prev) => prev.filter((emp) => emp.id !== deletingEmp.id));
-      setDeletingEmp(null);
-      showToast(`Removed locally (API: ${err.message})`, true);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="space-y-6 font-sans">
-      {/* Toast Alert */}
-      {toastMessage && (
-        <div className={`p-4 rounded-2xl text-white flex items-center gap-3 shadow-2xl border text-xs font-bold animate-bounce z-50 ${toastMessage.isError ? 'bg-amber-600/95 border-amber-400' : 'bg-emerald-600/95 border-emerald-400'}`}>
-          <CheckCircle2 className="h-5 w-5 shrink-0" />
-          <span>{toastMessage.msg}</span>
-        </div>
-      )}
-
-      {/* API Status Banner */}
-      {apiError && (
-        <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[11px] font-bold">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span>{apiError}</span>
-          <button onClick={fetchStaff} className="ml-auto flex items-center gap-1 text-white bg-amber-600 px-2 py-0.5 rounded-lg cursor-pointer text-[10px]">
-            <RefreshCw className="h-3 w-3" /> Retry
-          </button>
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
-            Staff Directory &amp; Management <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">NexuStaff Staff</span>
-          </h2>
-          <p className="text-xs text-slate-400 font-medium">
-            Add, edit, and configure staff profiles, assigned branch locations, unique 6-digit PINs, and preferred languages.
-          </p>
-        </div>
-        <button
-          onClick={openAddModal}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs shadow-lg transition-all active:scale-95 cursor-pointer"
-        >
-          <Plus className="h-4 w-4" /> Add New Staff Member
-        </button>
+    await action(async () => {
+      const data = { ...assignment, effectiveFrom: new Date(assignment.effectiveFrom).toISOString(), effectiveUntil: assignment.effectiveUntil ? new Date(assignment.effectiveUntil).toISOString() : undefined };
+      const id = mode === 'create' ? (await onboardingApi.create({ ...data, ...identity, email: identity.email || undefined, role: 'WORKER', active: true })).id : selectedId;
+      if (mode === 'assignment') await onboardingApi.add(id, data);
+      setIdentity(i=>({...i,pinCode:''})); setMode(null); await refresh(); await select(id); setNotice('Saved. Clock readiness is evaluated by the server below.');
+    });
+  }
+  const filtered = employees.filter(e => selectedLocationId === 'ALL' || e.employeeAssignments?.some((a:any)=>a.propertyId===selectedLocationId) || e.assignments?.some((a:any)=>a.locationId===selectedLocationId));
+  const canSubmit = can(user, mode === 'create' ? 'STAFF_CREATE' : 'STAFF_EDIT', assignment.propertyId);
+  return <section className="space-y-5 text-slate-200">
+    <header className="flex justify-between gap-4"><div><h2 className="text-2xl font-bold">Employees & work assignments</h2><p className="text-sm text-slate-400">A work assignment with a department and position is required for /clock.</p></div><button className={buttonClass} disabled={busy || !can(user,'STAFF_CREATE',selectedLocationId)} onClick={()=>open('create')}>Create Employee</button></header>
+    {error && <p role="alert" className="rounded bg-red-950 p-3">{error}</p>}{notice && <p role="status" className="rounded bg-emerald-950 p-3">{notice}</p>}
+    <div className="flex flex-wrap gap-2">{filtered.map(e=><button key={e.id} disabled={busy} className="rounded border border-slate-700 p-3" onClick={()=>select(e.id)}>{e.employeeNumber} — {e.firstName} {e.lastName}</button>)}{!filtered.length && <p>No active employees in this property scope.</p>}</div>
+    {detail && <article className="space-y-3 rounded-xl border border-slate-700 p-4">
+      <h3 className="text-lg font-bold">{detail.employeeNumber} — {detail.firstName} {detail.lastName}</h3><p>Account: {detail.status}</p>
+      {detail.readiness.some((r:any)=>r.canEdit) && <IdentityEditor key={detail.id} detail={detail} onSaved={()=>{void select(detail.id);void refresh();}}/>}
+      {!detail.readiness.length && <p>Assignment Required</p>}
+      {detail.readiness.map((r:any)=><p key={r.propertyId}>{r.name}: <strong>{r.clockReady ? 'Clock Ready' : 'Assignment Required'}</strong></p>)}
+      <p className="text-xs text-slate-400">Readiness reflects account/PIN and effective assignment context. Current shift sequence and operational checks still apply.</p>
+      <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{['Property','Department','Position','Effective dates (UTC)','State','Action'].map(h=><th className="p-2" key={h}>{h}</th>)}</tr></thead><tbody>{detail.assignments.map((a:any)=><tr key={a.id} className="border-t border-slate-800"><td className="p-2">{a.property}</td><td>{a.department}</td><td>{a.position}</td><td>{a.effectiveFrom} — {a.effectiveUntil || 'No end date'}</td><td>{a.active?'Active':'Inactive'}</td><td>{a.active && detail.readiness.some((r:any)=>r.propertyId===a.propertyId&&r.canEdit) && <button disabled={busy} className={buttonClass} onClick={()=>action(async()=>{ await onboardingApi.deactivate(selectedId,a.id); await select(selectedId); await refresh(); })}>Deactivate</button>}</td></tr>)}</tbody></table></div>
+      <button disabled={busy || !can(user,'STAFF_EDIT',selectedLocationId)} className={buttonClass} onClick={()=>open('assignment')}>Add Assignment</button>
+      <div className="flex flex-wrap items-center gap-3">
+        {detail.canViewPin && <button disabled={busy} className={buttonClass} onClick={()=>action(async()=>{const g=generation.current; const result=await onboardingApi.pin(selectedId); if(g===generation.current) setPin(result.pinCode || 'Unavailable — authorized reset required');})}>View PIN</button>}
+        {detail.canViewPin && pin && <p role="status">PIN: {pin} <button onClick={()=>setPin(null)}>Hide</button></p>}
+        {detail.canResetPin && <form className="flex gap-2" onSubmit={e=>{e.preventDefault();void action(async()=>{await onboardingApi.resetPin(selectedId,newPin);setNewPin('');setPin(null);setNotice('PIN reset saved.');});}}><label>New six-digit PIN<input aria-label="New six-digit PIN" className={inputClass} type="password" required pattern="[0-9]{6}" maxLength={6} value={newPin} onChange={e=>setNewPin(e.target.value)}/></label><button disabled={busy} className={buttonClass}>Reset PIN</button></form>}
       </div>
-
-      {/* Employee Table */}
-      <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-xl">
-        {loading ? (
-          <div className="flex items-center justify-center py-16 gap-3 text-slate-400 text-sm">
-            <Loader2 className="h-5 w-5 animate-spin" /> Loading staff from database...
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-slate-950 text-[10px] font-black uppercase text-slate-400 border-b border-slate-800">
-                <tr>
-                  <th className="px-4 py-3.5">Staff Member</th>
-                  <th className="px-4 py-3.5">Emp No</th>
-                  <th className="px-4 py-3.5">Position Code (JC_POS)</th>
-                  <th className="px-4 py-3.5">Assigned Branch (JC_LOC)</th>
-                  <th className="px-4 py-3.5 text-center">Unique 6-Digit PIN</th>
-                  <th className="px-4 py-3.5 text-center">Preferred Language</th>
-                  <th className="px-4 py-3.5 text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/70">
-                {filteredEmployees.map((emp) => (
-                  <tr key={emp.id} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="px-4 py-3.5 font-bold text-white">
-                      <div className="flex items-center gap-2.5">
-                        <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 text-white font-black flex items-center justify-center text-xs shadow-md">
-                          {emp.firstName.charAt(0)}{emp.lastName.charAt(0)}
-                        </div>
-                        <span>{emp.firstName} {emp.lastName}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5 font-mono text-slate-400">{emp.employeeNumber}</td>
-                    <td className="px-4 py-3.5">
-                      <span className="inline-flex items-center rounded-lg bg-blue-500/10 px-2.5 py-1 text-[11px] font-bold text-blue-400 border border-blue-500/20">
-                        {emp.jobPositionCode}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 font-semibold text-slate-300">{emp.locationCode || emp.locationId}</td>
-                    <td className="px-4 py-3.5 text-center font-mono font-bold text-emerald-400">
-                      {emp.pinCode && emp.pinCode !== 'Configurado' ? (
-                        <div className="flex items-center justify-center gap-1.5">
-                          <span>{visiblePins[emp.id] ? emp.pinCode : '••••••'}</span>
-                          <span className="text-[10px] text-slate-400 font-sans font-normal">(Configurado)</span>
-                          <button
-                            type="button"
-                            onClick={() => togglePinVisibility(emp.id)}
-                            className="p-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer ml-1"
-                            title={visiblePins[emp.id] ? 'Ocultar PIN' : 'Ver PIN'}
-                          >
-                            {visiblePins[emp.id] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                          </button>
-                        </div>
-                      ) : emp.pinCode === 'Configurado' ? (
-                        <span className="text-slate-400 font-normal">•••••• (Configurado)</span>
-                      ) : (
-                        <span className="text-slate-500 font-normal">Sin PIN</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3.5 text-center">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-950 text-slate-300 text-[10px] font-bold border border-slate-800">
-                        <Globe className="h-3 w-3 text-blue-400" /> {emp.preferredLanguage?.toUpperCase() || 'ES'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <button onClick={() => openEditModal(emp)} className="p-1.5 rounded-lg bg-slate-800 hover:bg-blue-600 text-slate-400 hover:text-white transition-colors cursor-pointer" title="Edit Staff Member">
-                          <Edit3 className="h-3.5 w-3.5" />
-                        </button>
-                        <button onClick={() => setDeletingEmp(emp)} className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-600 text-slate-400 hover:text-white transition-colors cursor-pointer" title="Delete Staff Member">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+    </article>}
+    {mode && <form onSubmit={submit} className="space-y-4 rounded-xl border border-slate-700 bg-slate-900 p-5">
+      <h3 className="text-lg font-bold">{mode==='create'?'New WORKER':'Additional work assignment'}</h3>
+      {mode==='create' && <div className="grid gap-3 md:grid-cols-3">{(['firstName','lastName','employeeNumber','email','pinCode'] as const).map(key=><label key={key}>{({firstName:'First name',lastName:'Last name',employeeNumber:'Employee number (EMP-...)',email:'Email (optional)',pinCode:'Initial six-digit PIN'})[key]}<input className={inputClass} required={key!=='email'} type={key==='pinCode'?'password':key==='email'?'email':'text'} pattern={key==='pinCode'?'[0-9]{6}':key==='employeeNumber'?'EMP-[A-Za-z0-9-]{1,40}':undefined} maxLength={key==='pinCode'?6:100} value={identity[key]} onChange={e=>setIdentity({...identity,[key]:e.target.value})}/></label>)}<label>Status<select className={inputClass} value={identity.status} onChange={e=>setIdentity({...identity,status:e.target.value})}><option>ACTIVE</option><option>TERMINATED</option></select></label></div>}
+      <div className="grid gap-3 md:grid-cols-3">
+        <label>Property<select required className={inputClass} value={assignment.propertyId} onChange={e=>{setAssignment({...assignment,propertyId:e.target.value,departmentId:'',positionId:''});setCatalog(null);}}><option value="">Select Property</option>{properties.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+        <label>Department<select required className={inputClass} disabled={!catalog} value={assignment.departmentId} onChange={e=>setAssignment({...assignment,departmentId:e.target.value,positionId:''})}><option value="">Select Department</option>{catalog?.departments.map((d:any)=><option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
+        <label>Position<select required className={inputClass} disabled={!assignment.departmentId} value={assignment.positionId} onChange={e=>setAssignment({...assignment,positionId:e.target.value})}><option value="">Select Position</option>{catalog?.positions.filter((p:any)=>p.departmentId===assignment.departmentId).map((p:any)=><option key={p.id} value={p.id}>{p.title}</option>)}</select></label>
+        <label>Effective from (browser local time)<input required type="datetime-local" className={inputClass} value={assignment.effectiveFrom} onChange={e=>setAssignment({...assignment,effectiveFrom:e.target.value})}/></label>
+        <label>Effective until (optional)<input type="datetime-local" className={inputClass} value={assignment.effectiveUntil} onChange={e=>setAssignment({...assignment,effectiveUntil:e.target.value})}/></label>
+        {mode==='assignment' && <label>Active<input type="checkbox" checked={assignment.active} onChange={e=>setAssignment({...assignment,active:e.target.checked})}/></label>}
       </div>
-
-      {/* ADD / EDIT MODAL */}
-      {(showAddModal || editingEmp) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
-          <div className="w-full max-w-md connecteam-glass-card rounded-3xl p-6 shadow-2xl border border-slate-700 space-y-4 text-white">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-lg font-black flex items-center gap-2">
-                <Users className="h-5 w-5 text-blue-400" /> {editingEmp ? 'Edit Staff Profile' : 'Add New Staff Member'}
-              </h3>
-              <button onClick={() => { setShowAddModal(false); setEditingEmp(null); }} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
-            </div>
-            <form onSubmit={editingEmp ? handleUpdateEmployee : handleCreateEmployee} className="space-y-3 text-xs">
-              <div>
-                <label className="block text-slate-400 font-bold mb-1">First Name</label>
-                <input type="text" required placeholder="e.g. Esteban" value={formData.firstName} onChange={(e) => setFormData({ ...formData, firstName: e.target.value })} className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white" />
-              </div>
-              <div>
-                <label className="block text-slate-400 font-bold mb-1">Last Name</label>
-                <input type="text" required placeholder="e.g. Gomez" value={formData.lastName} onChange={(e) => setFormData({ ...formData, lastName: e.target.value })} className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white" />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Position Code</label>
-                  <select value={formData.jobPositionCode} onChange={(e) => setFormData({ ...formData, jobPositionCode: e.target.value })} className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white">
-                    <option value="SUPERVISOR">SUPERVISOR</option>
-                    <option value="RECEPT">RECEPT</option>
-                    <option value="IT_SPEC">IT_SPEC</option>
-                    <option value="OP_MNT">OP_MNT</option>
-                    <option value="CAJERO">CAJERO</option>
-                    <option value="LOGISTICA">LOGISTICA</option>
-                    <option value="EVENTOS">EVENTOS</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Assigned Branch</label>
-                  <select
-                    value={formData.locationId}
-                    onChange={(e) => {
-                      const locId = e.target.value;
-                      const selectedLoc = locations.find((l) => l.id === locId);
-                      setFormData({
-                        ...formData,
-                        locationId: locId,
-                        locationCode: selectedLoc ? selectedLoc.code : 'MID-1001',
-                      });
-                    }}
-                    className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-bold"
-                  >
-                    {(user?.role === 'LOCATION_ADMIN'
-                      ? locations.filter((loc) => isLocationMatching(loc.id, loc.code, selectedLocationId))
-                      : locations
-                    ).map((loc) => (
-                      <option key={loc.id} value={loc.id}>
-                        [{loc.code}] {loc.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Unique 6-Digit PIN</label>
-                  <input type="text" required maxLength={6} placeholder="100100" value={formData.pinCode} onChange={(e) => setFormData({ ...formData, pinCode: e.target.value })} className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-center font-bold" />
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Preferred Language</label>
-                  <select value={formData.preferredLanguage} onChange={(e) => setFormData({ ...formData, preferredLanguage: e.target.value as 'es' | 'en' })} className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-bold">
-                    <option value="es">Español (ES)</option>
-                    <option value="en">English (EN)</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
-                <button type="button" onClick={() => { setShowAddModal(false); setEditingEmp(null); }} className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold cursor-pointer">Cancel</button>
-                <button type="submit" disabled={saving} className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black cursor-pointer flex items-center gap-2 disabled:opacity-60">
-                  {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  {editingEmp ? 'Update Staff Member' : 'Save Staff Member'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MANDATORY DELETE CONFIRMATION MODAL */}
-      {deletingEmp && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="w-full max-w-md connecteam-glass-card rounded-3xl p-6 shadow-2xl border-2 border-rose-500/50 space-y-5 text-white">
-            <div className="flex items-center gap-3 text-rose-400">
-              <div className="h-12 w-12 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center">
-                <AlertTriangle className="h-7 w-7" />
-              </div>
-              <div>
-                <h3 className="text-lg font-black tracking-tight text-white">Confirm Staff Deletion</h3>
-                <p className="text-xs text-rose-300 font-semibold">Irreversible Administrative Action</p>
-              </div>
-            </div>
-            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-xs space-y-2">
-              <p className="text-slate-300">
-                Are you sure you want to remove <strong className="text-white font-black">{deletingEmp.firstName} {deletingEmp.lastName}</strong> ({deletingEmp.employeeNumber}) from the system?
-              </p>
-              <p className="text-[11px] text-slate-400">
-                This action will delete staff credentials and unassign associated shift logs via database Cascade Delete. This action cannot be undone.
-              </p>
-            </div>
-            <div className="flex justify-end gap-3 pt-1">
-              <button onClick={() => setDeletingEmp(null)} className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-extrabold text-xs cursor-pointer">Cancel</button>
-              <button onClick={handleConfirmDelete} disabled={saving} className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-lg transition-all active:scale-95 cursor-pointer flex items-center gap-2 disabled:opacity-60">
-                {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Yes, Delete Staff Member
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+      {catalog?.canManage && <div className="grid gap-4 md:grid-cols-2">
+        <fieldset className="space-y-2 rounded border border-slate-700 p-3"><legend>Add Department to selected Property</legend><input aria-label="Department name" className={inputClass} placeholder="Department name" value={newDepartment.name} onChange={e=>setNewDepartment({...newDepartment,name:e.target.value})}/><input aria-label="Department code" className={inputClass} placeholder="Department code" value={newDepartment.code} onChange={e=>setNewDepartment({...newDepartment,code:e.target.value})}/><button type="button" disabled={busy||!newDepartment.name||!newDepartment.code} className={buttonClass} onClick={()=>action(async()=>{await onboardingApi.department(assignment.propertyId,newDepartment);setNewDepartment({name:'',code:''});setCatalogVersion(v=>v+1);})}>Add Department</button></fieldset>
+        <fieldset className="space-y-2 rounded border border-slate-700 p-3"><legend>Add Position to selected Department</legend><input aria-label="Position title" className={inputClass} placeholder="Position title" value={newPosition.name} onChange={e=>setNewPosition({...newPosition,name:e.target.value})}/><input aria-label="Position code" className={inputClass} placeholder="Position code" value={newPosition.code} onChange={e=>setNewPosition({...newPosition,code:e.target.value})}/><button type="button" disabled={busy||!assignment.departmentId||!newPosition.name||!newPosition.code} className={buttonClass} onClick={()=>action(async()=>{await onboardingApi.position(assignment.propertyId,{...newPosition,departmentId:assignment.departmentId});setNewPosition({name:'',code:''});setCatalogVersion(v=>v+1);})}>Add Position</button></fieldset>
+      </div>}
+      <p className="text-sm text-slate-400">No payroll or billing rates are entered. New employees require an active effective assignment before clocking.</p>
+      <div className="flex gap-3"><button disabled={busy||!canSubmit||!assignment.positionId} className={buttonClass}>{busy?'Saving…':mode==='create'?'Save Employee':'Save Assignment'}</button><button type="button" disabled={busy} onClick={()=>{setMode(null);setIdentity(i=>({...i,pinCode:''}));}}>Cancel</button></div>
+    </form>}
+  </section>;
 }

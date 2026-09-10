@@ -50,7 +50,7 @@ export default function LocationsPage() {
           name: loc.name,
           code: loc.code,
           address: loc.address || '',
-          city: loc.city || loc.address || '',
+          city: loc.timezone || loc.city || '',
           activeStaffCount: loc._count?.assignments || loc.assignments?.length || 0,
           kioskCode: loc.kioskCode || '',
         }));
@@ -117,7 +117,7 @@ export default function LocationsPage() {
         name: formData.name,
         code: formData.code,
         address: formData.address,
-        city: formData.city || 'Mexico',
+        timezone: formData.city,
         kioskCode: formData.kioskCode,
       });
       await fetchLocations();
@@ -138,7 +138,7 @@ export default function LocationsPage() {
     setSaving(true);
     try {
       await locationsApi.update(editingLoc.id, {
-        name: formData.name, address: formData.address, city: formData.city,
+        name: formData.name, address: formData.address, timezone: formData.city,
       });
       await fetchLocations();
       useLocationStore.getState().fetchLocations();
@@ -272,8 +272,8 @@ export default function LocationsPage() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-slate-400 font-bold mb-1">City / State</label>
-                  <input type="text" required placeholder="e.g. Mérida, Yucatán" value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white" />
+                  <label className="block text-slate-400 font-bold mb-1">Timezone (IANA)</label>
+                  <input type="text" required placeholder="e.g. America/Merida" value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white" />
                 </div>
                 <div>
                   <label className="block text-slate-400 font-bold mb-1">Kiosk Pairing Code</label>

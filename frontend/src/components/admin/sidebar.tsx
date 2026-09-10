@@ -74,7 +74,7 @@ export function Sidebar() {
     router.push('/admin/login');
   };
 
-  const visibleNavItems = NAV_ITEMS.filter(item => canOpenAdminRoute(user, item.href, selectedLocationId));
+  const visibleNavItems = NAV_ITEMS.filter(item => !['/admin/schedules', '/admin/settings', '/admin/reports'].includes(item.href)).filter(item => canOpenAdminRoute(user, item.href, selectedLocationId));
 
   return (
     <aside
@@ -118,7 +118,7 @@ export function Sidebar() {
         {visibleNavItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
-          const badgeText = item.isStaffBadge ? (staffCount !== null ? String(staffCount) : '4') : item.badge;
+          const badgeText = item.isStaffBadge ? (staffCount !== null ? String(staffCount) : null) : item.badge;
 
           return (
             <Link

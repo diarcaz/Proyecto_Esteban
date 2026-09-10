@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, Req, UseGuards, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { HttpException, Controller, Get, Post, Patch, Body, Param, Query, Req, UseGuards, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { TimeCorrectionService } from '../../application/services/time-correction.service';
 import { TenantGuard } from '@adapters/guards/tenant.guard';
@@ -19,8 +19,8 @@ export class TimeCorrectionController {
     try {
       return await this.timeCorrectionService.createCorrectionRequest(dto, req.user);
     } catch (e: any) {
-      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
-      throw new BadRequestException(e.message || 'Failed to create time correction request');
+      if (e instanceof HttpException) throw e;
+      throw new BadRequestException('Failed to create time correction request');
     }
   }
 
@@ -30,8 +30,8 @@ export class TimeCorrectionController {
     try {
       return await this.timeCorrectionService.getCorrectionRequests(req.user, query);
     } catch (e: any) {
-      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
-      throw new BadRequestException(e.message || 'Failed to fetch time correction requests');
+      if (e instanceof HttpException) throw e;
+      throw new BadRequestException('Failed to fetch time correction requests');
     }
   }
 
@@ -41,8 +41,8 @@ export class TimeCorrectionController {
     try {
       return await this.timeCorrectionService.getCorrectionRequestById(id, req.user);
     } catch (e: any) {
-      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
-      throw new NotFoundException(e.message || `TimeCorrectionRequest ${id} not found`);
+      if (e instanceof HttpException) throw e;
+      throw new NotFoundException(`TimeCorrectionRequest ${id} not found`);
     }
   }
 
@@ -53,8 +53,8 @@ export class TimeCorrectionController {
     try {
       return await this.timeCorrectionService.approveCorrectionRequest(id, dto, req.user);
     } catch (e: any) {
-      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
-      throw new BadRequestException(e.message || `Failed to approve time correction request ${id}`);
+      if (e instanceof HttpException) throw e;
+      throw new BadRequestException(`Failed to approve time correction request ${id}`);
     }
   }
 
@@ -65,8 +65,8 @@ export class TimeCorrectionController {
     try {
       return await this.timeCorrectionService.rejectCorrectionRequest(id, dto, req.user);
     } catch (e: any) {
-      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
-      throw new BadRequestException(e.message || `Failed to reject time correction request ${id}`);
+      if (e instanceof HttpException) throw e;
+      throw new BadRequestException(`Failed to reject time correction request ${id}`);
     }
   }
 }

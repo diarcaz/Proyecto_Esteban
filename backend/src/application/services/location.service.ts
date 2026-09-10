@@ -1,6 +1,6 @@
 import { resolvePropertyReadScope } from '@domain/security/property-read-scope';
 import { Permission } from '@domain/permissions/permission.enum';
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '@infrastructure/persistence/prisma/prisma.service';
 import { AuthorizationService } from '@domain/security/authorization.service';
 
@@ -39,20 +39,16 @@ export class LocationService {
     }));
   }
 
-  async create(dto: any, currentUser?: any) {
-    let companyId = currentUser && currentUser.role !== 'SUPER_ADMIN' ? currentUser.companyId : dto.companyId;
+  private validateTimezone(value: unknown): string {
+    if (typeof value !== 'string' || !value.trim()) throw new BadRequestException('A valid IANA timezone is required.');
+    try { new Intl.DateTimeFormat('en', { timeZone: value }); } catch { throw new BadRequestException('A valid IANA timezone is required.'); }
+    return value;
+  }
 
-    if (!companyId) {
-      const defaultCompany = await this.prisma.company.findFirst();
-      if (defaultCompany) {
-        companyId = defaultCompany.id;
-      } else {
-        const createdComp = await this.prisma.company.create({
-          data: { name: 'NexuStaff Enterprise Corp', taxId: 'TAX-99887766' },
-        });
-        companyId = createdComp.id;
-      }
-    }
+  async create(dto: any, currentUser?: any) {
+    const companyId = currentUser && currentUser.role !== 'SUPER_ADMIN' ? currentUser.companyId : dto.companyId || currentUser?.companyId;
+
+    if (!companyId) throw new BadRequestException('An explicit company is required.');
 
     if (currentUser) {
       this.authzService.assertCompanyAccess(currentUser, companyId);
@@ -63,7 +59,7 @@ export class LocationService {
         companyId,
         name: dto.name,
         address: dto.address,
-        timezone: dto.city || 'America/Merida',
+        timezone: this.validateTimezone(dto.timezone ?? dto.city),
         locationCode: dto.code || `LOC-${Date.now()}`,
         operationalConfig: {
           create: {
@@ -99,7 +95,7 @@ export class LocationService {
       data: {
         name: dto.name ?? loc.name,
         address: dto.address ?? loc.address,
-        timezone: dto.city ?? loc.timezone,
+        timezone: this.validateTimezone(dto.timezone ?? dto.city ?? loc.timezone),
         operationalConfig: {
           upsert: {
             create: {

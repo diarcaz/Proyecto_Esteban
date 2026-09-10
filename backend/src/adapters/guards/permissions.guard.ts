@@ -35,6 +35,13 @@ export class PermissionsGuard implements CanActivate {
       throw new UnauthorizedException('User is not authenticated.');
     }
 
+    if (this.reflector.getAllAndOverride<boolean>('SERVER_PROPERTY_SCOPE', [context.getHandler(), context.getClass()])) {
+      // Preliminary PIN capability check; StaffService then checks the actual target employee/company/property.
+      for (const permission of requiredPermissions) {
+        if (user.role !== 'SUPER_ADMIN' && !(user.role === 'OWNER' && user.companyId) && !user.permissions?.includes(permission) && !user.propertyAccess?.some((p: any) => p.permissions?.includes(permission))) throw new ForbiddenException(`Access denied: Missing required permission '${permission}'.`);
+      }
+      return true;
+    }
     const propertyRead = this.reflector.get<Permission>(PROPERTY_READ, context.getHandler());
     if (propertyRead) {
       if (!this.prisma || !requiredPermissions.includes(propertyRead)) throw new ForbiddenException('Property authorization unavailable.');

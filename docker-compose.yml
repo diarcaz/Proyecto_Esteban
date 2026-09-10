@@ -49,7 +49,10 @@ services:
       DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/nexustaff_db?schema=public"
       REDIS_HOST: "redis"
       REDIS_PORT: 6379
-      JWT_SECRET: "nexustaff_jwt_super_secret_key_2026"
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      PIN_ENCRYPTION_KEY: ${PIN_ENCRYPTION_KEY:?PIN_ENCRYPTION_KEY is required}
+      NODE_ENV: development
+      CORS_ORIGIN: http://localhost:3000
       JWT_EXPIRATION: "1d"
     depends_on:
       postgres:

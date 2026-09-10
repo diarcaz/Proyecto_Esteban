@@ -27,7 +27,7 @@ export class AttendanceController {
       return await this.attendanceService.processStandardClock(userId, body);
     } catch (e: any) {
       if (e instanceof HttpException) throw e;
-      throw new BadRequestException(e.message || 'Failed to record attendance punch');
+      throw new BadRequestException('Failed to record attendance punch');
     }
   }
 
@@ -45,7 +45,7 @@ export class AttendanceController {
       return await this.attendanceService.processStandardClock(body.user_id, body);
     } catch (e: any) {
       if (e instanceof HttpException) throw e;
-      throw new BadRequestException(e.message || 'Failed to record proxy attendance punch');
+      throw new BadRequestException('Failed to record proxy attendance punch');
     }
   }
 
@@ -98,11 +98,11 @@ export class AttendanceController {
     @Req() req: any,
   ) {
     try {
-      const ip = req.ip || req.headers['x-forwarded-for'];
+      const ip = req.ip || req.socket.remoteAddress;
       return await this.attendanceService.adjustPunchTime(id, body, req.user, ip);
     } catch (e: any) {
       if (e instanceof NotFoundException || e instanceof ForbiddenException) throw e;
-      throw new BadRequestException(e.message || `Failed to update attendance log ${id}`);
+      throw new BadRequestException(`Failed to update attendance log ${id}`);
     }
   }
 
@@ -111,11 +111,11 @@ export class AttendanceController {
   @ApiOperation({ summary: 'Approve overtime shift' })
   async approveOvertime(@Param('id') id: string, @Req() req: any) {
     try {
-      const ip = req.ip || req.headers['x-forwarded-for'];
+      const ip = req.ip || req.socket.remoteAddress;
       return await this.attendanceService.approveOvertime(id, req.user, ip);
     } catch (e: any) {
       if (e instanceof NotFoundException || e instanceof ForbiddenException) throw e;
-      throw new BadRequestException(e.message || `Failed to approve overtime for log ${id}`);
+      throw new BadRequestException(`Failed to approve overtime for log ${id}`);
     }
   }
 }

@@ -47,6 +47,7 @@ export class RolesAndLocationsGuard implements CanActivate {
 
     // These list routes perform authoritative DB scope checks in PermissionsGuard and their service.
     if (this.reflector.get(PROPERTY_READ, context.getHandler())) return true;
+    if (this.reflector.getAllAndOverride<boolean>('SERVER_PROPERTY_SCOPE', [context.getHandler(), context.getClass()])) return true;
     const assigned: string[] = user.assignedLocationIds || [];
     if (assigned.length === 0) {
       throw new ForbiddenException('User has no assigned branch locations.');

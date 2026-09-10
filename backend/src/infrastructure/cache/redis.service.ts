@@ -10,24 +10,35 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly configService: ConfigService) {}
 
   onModuleInit() {
-    const host = this.configService.get<string>('REDIS_HOST', 'localhost');
+    const url = this.configService.get<string>('REDIS_URL');
+    const host = this.configService.get<string>('REDIS_HOST') || (this.configService.get('NODE_ENV') !== 'production' ? 'localhost' : undefined);
+    if (!url && !host) throw new Error('REDIS_URL or REDIS_HOST is required');
+    if (url && !/^rediss?:\/\//.test(url)) throw new Error('REDIS_URL must use redis:// or rediss://');
     const port = this.configService.get<number>('REDIS_PORT', 6379);
     const password = this.configService.get<string>('REDIS_PASSWORD', '');
 
-    this.client = new Redis({
+    const options = {
       host,
+      tls: this.configService.get<string>('REDIS_TLS') === 'true' ? {} : undefined,
       port,
       password: password || undefined,
       lazyConnect: true,
       maxRetriesPerRequest: 1,
       enableOfflineQueue: false,
-    });
+      connectTimeout: 3000,
+      commandTimeout: 3000,
+    };
+    this.client = url ? new Redis(url, { lazyConnect: true, maxRetriesPerRequest: 1, enableOfflineQueue: false, connectTimeout: 3000, commandTimeout: 3000 }) : new Redis(options);
 
     void this.client.connect().catch(() => this.logger.warn('Redis unavailable'));
 
     this.client.on('error', (err) => {
-      this.logger.warn(`Redis connection status: ${err.message}`);
+      this.logger.warn('Redis unavailable');
     });
+  }
+
+  async ping(): Promise<void> {
+    if (!this.client || await this.client.ping() !== 'PONG') throw new Error('Redis unavailable');
   }
 
   async onModuleDestroy() {

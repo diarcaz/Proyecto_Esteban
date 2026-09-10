@@ -13,11 +13,11 @@ RUN npm install
 COPY . .
 
 # Argumento de compilación para la URL de la API del Backend NestJS
-ARG NEXT_PUBLIC_API_URL=http://localhost:3001/api/v1
+ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 # Compilar Next.js para producción
-RUN npm run build
+RUN test -n "$NEXT_PUBLIC_API_URL" && npm run build
 
 # Etapa de ejecución de producción
 FROM node:20-alpine AS runner

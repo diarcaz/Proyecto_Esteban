@@ -10,6 +10,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       await (this as any).$connect();
       this.logger.log('PostgreSQL database connected via Prisma.');
     } catch (err: any) {
+      if (process.env.NODE_ENV === 'production') throw new Error('PostgreSQL unavailable at startup');
       this.logger.warn('PostgreSQL connection deferred (local DB offline). Server running in dev mode.');
     }
   }

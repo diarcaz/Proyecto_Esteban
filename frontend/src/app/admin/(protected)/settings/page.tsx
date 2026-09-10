@@ -64,7 +64,9 @@ const MOCK_AUDIT_LOGS: MockAuditLog[] = [
   },
 ];
 
-export default function SettingsPage() {
+export default function BetaUnavailable() { return <section role="status" className="p-6 text-slate-200"><h2>Not available in beta</h2><p>This module is under development. Use Live Attendance Logs for recorded events.</p></section>; }
+
+function SettingsPage() {
   const { user } = useAuthStore();
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
 

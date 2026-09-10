@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "test:phase41": "node --test tests/phase41.test.cjs",
-    "test:phase42": "node --test tests/phase42.test.cjs"
+    "test:phase42": "node --test tests/phase42.test.cjs",
+    "test:beta": "node --test tests/beta-readiness.test.cjs",
+    "test:phase46": "node --test tests/phase46.test.cjs"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",

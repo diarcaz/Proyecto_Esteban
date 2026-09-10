@@ -3,12 +3,14 @@ import { AppModule } from './app.module';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
+import { allowedOrigins, validateProductionEnvironment } from './infrastructure/security/deployment-config';
 import { validatePinEncryptionKeyOrDie } from './infrastructure/security/pin-encryption.util';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
   // Phase 3.2 (K): Fail-fast startup validation — MUST run before NestFactory.create
+  validateProductionEnvironment();
   validatePinEncryptionKeyOrDie();
   logger.log('✓ PIN_ENCRYPTION_KEY validated successfully.');
 
@@ -21,20 +23,8 @@ async function bootstrap() {
     }),
   );
 
-  // Dynamic CORS Configuration
-  const defaultOrigins = [
-    'https://nexustaff-frontend.onrender.com',
-    'http://localhost:3000',
-  ];
-
-  const allowedOrigins = process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
-    : process.env.NODE_ENV === 'production'
-    ? defaultOrigins
-    : true;
-
   app.enableCors({
-    origin: allowedOrigins,
+    origin: allowedOrigins(),
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });

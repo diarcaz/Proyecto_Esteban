@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { MOCK_LOCATIONS, LocationMock } from '@/lib/mock-data';
+import type { LocationMock } from '@/lib/mock-data';
 import { locationsApi } from '@/lib/api-client';
 
 interface LocationState {
@@ -28,27 +28,7 @@ export function isLocationMatching(itemLocId?: string, itemLocCode?: string, tar
     if (itemLocId && itemLocId === targetLoc.id) return true;
     if (itemLocCode && itemLocCode === targetLoc.code) return true;
 
-    // Dynamic prefix match for any new branch (e.g. MID-1001 vs MID, PUE-1004 vs PUE)
-    const targetPrefix = targetLoc.code.split('-')[0].toUpperCase();
-    const itemPrefix = (itemLocCode || '').split('-')[0].toUpperCase();
-    if (targetPrefix && itemPrefix && targetPrefix === itemPrefix) return true;
   }
-
-  // Fallback slug matching
-  const targetUpper = targetSelectedId.toUpperCase();
-  const currentCodeUpper = (itemLocCode || '').toUpperCase();
-  const currentIdLower = (itemLocId || '').toLowerCase();
-
-  if (targetUpper.includes('MID') || targetSelectedId === 'loc-mid') {
-    return currentCodeUpper.includes('MID') || currentIdLower.includes('mid');
-  }
-  if (targetUpper.includes('CUN') || targetSelectedId === 'loc-cun') {
-    return currentCodeUpper.includes('CUN') || currentIdLower.includes('cun');
-  }
-  if (targetUpper.includes('MTY') || targetSelectedId === 'loc-mty') {
-    return currentCodeUpper.includes('MTY') || currentIdLower.includes('mty');
-  }
-
   return false;
 }
 
@@ -68,7 +48,7 @@ export const useLocationStore = create<LocationState>((set, get) => ({
           code: loc.code,
           address: loc.address || '',
           city: loc.city || loc.address || '',
-          activeStaffCount: loc._count?.assignments || loc.assignments?.length || 0,
+          activeStaffCount: loc.activeStaffCount ?? loc._count?.assignments ?? loc.assignments?.length ?? 0,
           kioskCode: loc.kioskCode,
         }));
         set({ locations: mapped, isLoading: false });

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, BadRequestException, NotFoundException, ForbiddenException, Req, UseGuards } from '@nestjs/common';
+import { SetMetadata, HttpException, Controller, Get, Post, Patch, Delete, Body, Param, BadRequestException, NotFoundException, ForbiddenException, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { StaffService } from '../../application/services/staff.service';
 import { Roles } from '@adapters/decorators/roles-and-locations.decorator';
@@ -22,8 +22,8 @@ export class StaffController {
       const allowedLocationIds = req.query.allowed_location_ids as string[] | undefined;
       return await this.staffService.findAll(allowedLocationIds, req.user);
     } catch (e: any) {
-      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
-      throw new BadRequestException(e.message || 'Failed to fetch staff members');
+      if (e instanceof HttpException) throw e;
+      throw new BadRequestException('Failed to fetch staff members');
     }
   }
 
@@ -34,11 +34,12 @@ export class StaffController {
     try {
       return await this.staffService.findOne(id, req.user);
     } catch (e: any) {
-      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
-      throw new NotFoundException(e.message || `Staff member ${id} not found`);
+      if (e instanceof HttpException) throw e;
+      throw new NotFoundException(`Staff member ${id} not found`);
     }
   }
 
+  @SetMetadata('SERVER_PROPERTY_SCOPE', true)
   @Get(':id/pin')
   @RequirePermissions(Permission.VIEW_EMPLOYEE_PIN)
   @ApiOperation({ summary: 'Get decrypted employee 6-digit PIN (requires VIEW_EMPLOYEE_PIN permission)' })
@@ -46,11 +47,12 @@ export class StaffController {
     try {
       return await this.staffService.getDecryptedPin(id, req.user);
     } catch (e: any) {
-      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
-      throw new BadRequestException(e.message || `Failed to retrieve PIN for staff member ${id}`);
+      if (e instanceof HttpException) throw e;
+      throw new BadRequestException(`Failed to retrieve PIN for staff member ${id}`);
     }
   }
 
+  @SetMetadata('SERVER_PROPERTY_SCOPE', true)
   @Patch(':id/pin')
   @RequirePermissions(Permission.RESET_EMPLOYEE_PIN)
   @ApiOperation({ summary: 'Reset employee 6-digit PIN (requires RESET_EMPLOYEE_PIN permission)' })
@@ -58,8 +60,8 @@ export class StaffController {
     try {
       return await this.staffService.resetPin(id, pinCode, req.user);
     } catch (e: any) {
-      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
-      throw new BadRequestException(e.message || `Failed to reset PIN for staff member ${id}`);
+      if (e instanceof HttpException) throw e;
+      throw new BadRequestException(`Failed to reset PIN for staff member ${id}`);
     }
   }
 
@@ -70,8 +72,8 @@ export class StaffController {
     try {
       return await this.staffService.create(body, req.user);
     } catch (e: any) {
-      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
-      throw new BadRequestException(e.message || 'Failed to create staff member');
+      if (e instanceof HttpException) throw e;
+      throw new BadRequestException('Failed to create staff member');
     }
   }
 
@@ -82,8 +84,8 @@ export class StaffController {
     try {
       return await this.staffService.update(id, body, req.user);
     } catch (e: any) {
-      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
-      throw new BadRequestException(e.message || `Failed to update staff member ${id}`);
+      if (e instanceof HttpException) throw e;
+      throw new BadRequestException(`Failed to update staff member ${id}`);
     }
   }
 
@@ -94,8 +96,8 @@ export class StaffController {
     try {
       return await this.staffService.remove(id, req.user);
     } catch (e: any) {
-      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
-      throw new BadRequestException(e.message || `Failed to delete staff member ${id}`);
+      if (e instanceof HttpException) throw e;
+      throw new BadRequestException(`Failed to delete staff member ${id}`);
     }
   }
 }

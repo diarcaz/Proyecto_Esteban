@@ -1,4 +1,5 @@
 import { WebSocketGateway, WebSocketServer, SubscribeMessage, MessageBody, ConnectedSocket, OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect } from '@nestjs/websockets';
+import { allowedOrigins } from '../security/deployment-config';
 import { Server, Socket } from 'socket.io';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -20,7 +21,7 @@ export interface AlertNotificationPayload {
 }
 
 @Injectable()
-@WebSocketGateway({ cors: { origin: '*' }, namespace: '/events' })
+@WebSocketGateway({ cors: { origin: (origin, callback) => callback(null, !origin || allowedOrigins().includes(origin)), credentials: true }, namespace: '/events' })
 export class NotificationsGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;
   private readonly logger = new Logger(NotificationsGateway.name);
@@ -44,6 +45,8 @@ export class NotificationsGateway implements OnGatewayInit, OnGatewayConnection,
     // Middleware completes authentication before connection/subscription handlers run.
     server.use(async (client, next) => {
       try {
+        const origin = client.handshake.headers.origin;
+        if (origin && !allowedOrigins().includes(origin)) throw new Error('Origin denied');
         const token = client.handshake.auth?.token;
         const { expires } = await this.authenticate(token);
         const timer = setTimeout(() => client.disconnect(true), Math.min(expires - Date.now(), 2147483647));

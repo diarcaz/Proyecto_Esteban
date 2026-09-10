@@ -21,7 +21,6 @@ RUN npx prisma generate
 
 # Compilar NestJS a JavaScript producción
 RUN npm run build
-RUN npx tsc prisma/seed.ts --outDir dist/prisma --skipLibCheck --module commonjs --target ES2021 --esModuleInterop
 
 # Etapa de ejecución liviana de producción
 FROM node:20-alpine AS runner
@@ -40,6 +39,7 @@ COPY prisma ./prisma/
 RUN npm install
 
 COPY --from=builder /app/dist ./dist
+COPY scripts ./scripts
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 

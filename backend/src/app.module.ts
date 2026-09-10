@@ -1,3 +1,5 @@
+import { OnboardingService } from '@application/services/onboarding.service';
+import { OnboardingController } from '@adapters/controllers/onboarding.controller';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -45,6 +47,7 @@ import { TimeCorrectionController } from '@adapters/controllers/time-correction.
   ],
   controllers: [
     HealthController,
+    OnboardingController,
     AttendanceController,
     TimeCorrectionController,
     ReportsController,
@@ -61,6 +64,7 @@ import { TimeCorrectionController } from '@adapters/controllers/time-correction.
     AttendanceService,
     ReportsService,
     StaffService,
+    OnboardingService,
     LocationService,
     AuditService,
     SchedulesService,

@@ -77,7 +77,9 @@ function parseShiftStringTo24(shiftStr?: string): { start24: string; end24: stri
   };
 }
 
-export default function SchedulesPage() {
+export default function BetaUnavailable() { return <section role="status" className="p-6 text-slate-200"><h2>Not available in beta</h2><p>This module is under development. Use Live Attendance Logs for recorded events.</p></section>; }
+
+function SchedulesPage() {
   const { selectedLocationId } = useLocationStore();
   const [employees, setEmployees] = useState<EmployeeMock[]>(MOCK_EMPLOYEES);
   const [showAssignModal, setShowAssignModal] = useState(false);

@@ -13,7 +13,10 @@
     "prisma:migrate": "prisma migrate dev",
     "seed": "ts-node prisma/seed.ts",
     "test:security": "node -r ts-node/register -r tsconfig-paths/register src/domain/security/authorization.service.spec.ts",
-    "test:phase41": "node -r ts-node/register -r tsconfig-paths/register src/domain/security/phase41-remediation.spec.ts"
+    "test:phase41": "node -r ts-node/register -r tsconfig-paths/register src/domain/security/phase41-remediation.spec.ts",
+    "bootstrap:admin": "node scripts/bootstrap-admin.cjs",
+    "test:beta": "node --test scripts/beta-readiness.test.cjs",
+    "test:phase46": "node --test scripts/phase46-onboarding.test.cjs"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

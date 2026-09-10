@@ -1,5 +1,5 @@
 import { PropertyRead } from '@adapters/decorators/property-read.decorator';
-import { Controller, Get, Post, Patch, Delete, Body, Param, BadRequestException, NotFoundException, ForbiddenException, Req, UseGuards } from '@nestjs/common';
+import { HttpException, Controller, Get, Post, Patch, Delete, Body, Param, BadRequestException, NotFoundException, ForbiddenException, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { LocationService } from '../../application/services/location.service';
 import { Roles } from '@adapters/decorators/roles-and-locations.decorator';
@@ -25,8 +25,8 @@ export class LocationController {
       const allowedLocationIds = req.query.allowed_location_ids as string[] | undefined;
       return await this.locationService.findAll(allowedLocationIds, req.user, req.query, req.headers);
     } catch (e: any) {
-      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
-      throw new BadRequestException(e.message || 'Failed to fetch locations');
+      if (e instanceof HttpException) throw e;
+      throw new BadRequestException('Failed to fetch locations');
     }
   }
 
@@ -38,8 +38,8 @@ export class LocationController {
     try {
       return await this.locationService.create(body, req.user);
     } catch (e: any) {
-      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
-      throw new BadRequestException(e.message || 'Failed to create branch location');
+      if (e instanceof HttpException) throw e;
+      throw new BadRequestException('Failed to create branch location');
     }
   }
 
@@ -51,8 +51,8 @@ export class LocationController {
     try {
       return await this.locationService.update(id, body, req.user);
     } catch (e: any) {
-      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
-      throw new BadRequestException(e.message || `Failed to update location ${id}`);
+      if (e instanceof HttpException) throw e;
+      throw new BadRequestException(`Failed to update location ${id}`);
     }
   }
 
@@ -64,8 +64,8 @@ export class LocationController {
     try {
       return await this.locationService.remove(id, req.user);
     } catch (e: any) {
-      if (e instanceof ForbiddenException || e instanceof NotFoundException) throw e;
-      throw new BadRequestException(e.message || `Failed to delete location ${id}`);
+      if (e instanceof HttpException) throw e;
+      throw new BadRequestException(`Failed to delete location ${id}`);
     }
   }
 }
