@@ -3,11 +3,15 @@
 import { can } from '@/lib/admin-access';
 import React, { useState, useEffect, useCallback } from 'react';
 import { locationsApi } from '@/lib/api-client';
-import { LocationMock } from '@/lib/mock-data';
+import { TimezoneSelect } from '@/components/timezone-select';
+import { propertyPayload } from '@/lib/property-form';
+import { safePropertyError } from '@/lib/api-error';
 import { useLocationStore } from '@/store/use-location-store';
 import { useAuthStore } from '@/store/use-auth-store';
 import Link from 'next/link';
-import { MapPin, Plus, Tablet, Building2, Edit3, ShieldCheck, Trash2, AlertTriangle, CheckCircle2, Loader2, RefreshCw, ShieldAlert } from 'lucide-react';
+import { Plus, Building2, Edit3, ShieldCheck, Trash2, AlertTriangle, CheckCircle2, Loader2, RefreshCw, ShieldAlert } from 'lucide-react';
+
+type PropertyRow = { id: string; name: string; code: string; address: string; timezone: string; activeStaffCount: number };
 
 export default function LocationsPage() {
   const { user } = useAuthStore();
@@ -15,27 +19,25 @@ export default function LocationsPage() {
   const canCreate = can(user, 'PROPERTY_MANAGE') && ['SUPER_ADMIN', 'OWNER', 'ADMIN'].includes(user?.role || '');
   const canDelete = can(user, 'PROPERTY_MANAGE') && ['SUPER_ADMIN', 'OWNER'].includes(user?.role || '');
 
-  const [locations, setLocations] = useState<LocationMock[]>([]);
+  const [locations, setLocations] = useState<PropertyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
   const [showAddModal, setShowAddModal] = useState(false);
-  const [editingLoc, setEditingLoc] = useState<LocationMock | null>(null);
-  const [deletingLoc, setDeletingLoc] = useState<LocationMock | null>(null);
+  const [editingLoc, setEditingLoc] = useState<PropertyRow | null>(null);
+  const [deletingLoc, setDeletingLoc] = useState<PropertyRow | null>(null);
   const [toastMessage, setToastMessage] = useState<{ msg: string; isError?: boolean } | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
     code: '',
     address: '',
-    city: '',
-    kioskCode: '',
+    timezone: '',
   });
 
   const showToast = (msg: string, isError = false) => {
     setToastMessage({ msg, isError });
-    setTimeout(() => setToastMessage(null), 3500);
   };
 
   // ── Fetch locations from API ───────────
@@ -45,14 +47,13 @@ export default function LocationsPage() {
     try {
       const data = await locationsApi.list();
       if (data && data.length > 0) {
-        const mapped: LocationMock[] = data.map((loc: any) => ({
+        const mapped: PropertyRow[] = data.map((loc: any) => ({
           id: loc.id,
           name: loc.name,
           code: loc.code,
           address: loc.address || '',
-          city: loc.timezone || loc.city || '',
+          timezone: loc.timezone || loc.city || '',
           activeStaffCount: loc._count?.assignments || loc.assignments?.length || 0,
-          kioskCode: loc.kioskCode || '',
         }));
         setLocations(mapped);
       } else {
@@ -89,43 +90,38 @@ export default function LocationsPage() {
   }
 
   const openAddModal = () => {
+    setToastMessage(null);
     setFormData({
       name: '',
       code: `LOC-${Math.floor(1000 + Math.random() * 9000)}`,
       address: '',
-      city: '',
-      kioskCode: `${Math.floor(1000 + Math.random() * 9000)}`,
+      timezone: '',
     });
     setShowAddModal(true);
   };
 
-  const openEditModal = (loc: LocationMock) => {
+  const openEditModal = (loc: PropertyRow) => {
+    setToastMessage(null);
     setEditingLoc(loc);
-    setFormData({ name: loc.name, code: loc.code, address: loc.address, city: loc.city, kioskCode: loc.kioskCode });
+    setFormData({ name: loc.name, code: loc.code, address: loc.address, timezone: loc.timezone });
   };
 
   // ── CREATE location ──────────────────────────────────────────────────────
   const handleCreateLocation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.address) {
+    if (!formData.name.trim() || !formData.address.trim()) {
       alert('Please fill out all required location details.');
       return;
     }
     setSaving(true);
     try {
-      await locationsApi.create({
-        name: formData.name,
-        code: formData.code,
-        address: formData.address,
-        timezone: formData.city,
-        kioskCode: formData.kioskCode,
-      });
+      await locationsApi.create(propertyPayload(formData));
       await fetchLocations();
       useLocationStore.getState().fetchLocations();
       setShowAddModal(false);
       showToast(`Branch location "${formData.name}" created and saved to database!`);
     } catch (err: any) {
-      showToast('Unable to create property. No changes were saved.', true);
+      showToast(safePropertyError(err, 'Unable to create property. No changes were saved.'), true);
     } finally {
       setSaving(false);
     }
@@ -137,15 +133,13 @@ export default function LocationsPage() {
     if (!editingLoc) return;
     setSaving(true);
     try {
-      await locationsApi.update(editingLoc.id, {
-        name: formData.name, address: formData.address, timezone: formData.city,
-      });
+      await locationsApi.update(editingLoc.id, propertyPayload({ name: formData.name, address: formData.address, timezone: formData.timezone }));
       await fetchLocations();
       useLocationStore.getState().fetchLocations();
       setEditingLoc(null);
       showToast(`Branch "${formData.name}" updated in database!`);
     } catch (err: any) {
-      showToast('Unable to update property. No changes were saved.', true);
+      showToast(safePropertyError(err, 'Unable to update property. No changes were saved.'), true);
     } finally {
       setSaving(false);
     }
@@ -162,7 +156,7 @@ export default function LocationsPage() {
       setDeletingLoc(null);
       showToast(`Branch "${deletingLoc.name}" deleted from database!`);
     } catch (err: any) {
-      showToast('Unable to delete property.', true);
+      showToast(safePropertyError(err, 'Unable to delete property.'), true);
     } finally {
       setSaving(false);
     }
@@ -172,7 +166,7 @@ export default function LocationsPage() {
     <div className="space-y-6 font-sans">
       {/* Toast Alert */}
       {toastMessage && (
-        <div className={`p-4 rounded-2xl text-white flex items-center gap-3 shadow-2xl border text-xs font-bold animate-bounce z-50 ${toastMessage.isError ? 'bg-amber-600/95 border-amber-400' : 'bg-emerald-600/95 border-emerald-400'}`}>
+        <div role={toastMessage.isError ? 'alert' : 'status'} className={`p-4 rounded-2xl text-white flex items-center gap-3 shadow-2xl border text-xs font-bold animate-bounce z-50 ${toastMessage.isError ? 'bg-amber-600/95 border-amber-400' : 'bg-emerald-600/95 border-emerald-400'}`}>
           <CheckCircle2 className="h-5 w-5 shrink-0" /><span>{toastMessage.msg}</span>
         </div>
       )}
@@ -192,7 +186,7 @@ export default function LocationsPage() {
           <h2 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
             Branch Locations &amp; Kiosks <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">NexuStaff Branches</span>
           </h2>
-          <p className="text-xs text-slate-400 font-medium">Manage agency branch locations, addresses, timezone settings, and unique kiosk device codes.</p>
+          <p className="text-xs text-slate-400 font-medium">Manage branch locations, addresses and timezones. Pair terminals through Clock setup.</p>
         </div>
         <button disabled={!canCreate} onClick={openAddModal} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs shadow-lg transition-all active:scale-95 cursor-pointer">
           <Plus className="h-4 w-4" /> Add New Branch Location
@@ -214,7 +208,7 @@ export default function LocationsPage() {
                   </div>
                   <div>
                     <h3 className="text-base font-extrabold text-white">{loc.name}</h3>
-                    <p className="text-xs text-slate-400">{loc.address} &bull; {loc.city}</p>
+                    <p className="text-xs text-slate-400">{loc.address} &bull; {loc.timezone}</p>
                   </div>
                 </div>
                 <span className="font-mono text-xs font-bold bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 text-emerald-400">[{loc.code}]</span>
@@ -226,10 +220,7 @@ export default function LocationsPage() {
                   <p className="text-lg font-black text-white">{loc.activeStaffCount} Staff Members</p>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1">
-                  <span className="text-[10px] text-slate-500 font-bold uppercase flex items-center gap-1">
-                    <Tablet className="h-3.5 w-3.5 text-blue-400" /> Kiosk Device Code
-                  </span>
-                  <p className="text-sm font-black font-mono text-blue-400">{loc.kioskCode}</p>
+                  <Link href="/clock/setup" className="text-blue-400 underline">Clock terminal setup</Link>
                 </div>
               </div>
 
@@ -262,6 +253,7 @@ export default function LocationsPage() {
               <button onClick={() => { setShowAddModal(false); setEditingLoc(null); }} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
             </div>
             <form onSubmit={editingLoc ? handleUpdateLocation : handleCreateLocation} className="space-y-3 text-xs">
+              {toastMessage?.isError && <p role="alert" className="rounded-lg bg-amber-950 p-3 text-amber-200">{toastMessage.msg}</p>}
               <div>
                 <label className="block text-slate-400 font-bold mb-1">Branch Name</label>
                 <input type="text" required placeholder="e.g. Downtown Branch - MERIDA" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white" />
@@ -270,16 +262,7 @@ export default function LocationsPage() {
                 <label className="block text-slate-400 font-bold mb-1">Address</label>
                 <input type="text" required placeholder="e.g. Calle 60 #450 x 53" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white" />
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Timezone (IANA)</label>
-                  <input type="text" required placeholder="e.g. America/Merida" value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white" />
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Kiosk Pairing Code</label>
-                  <input type="text" required placeholder="1001" value={formData.kioskCode} onChange={(e) => setFormData({ ...formData, kioskCode: e.target.value })} className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono font-bold text-center" />
-                </div>
-              </div>
+              <TimezoneSelect value={formData.timezone} onChange={timezone => setFormData({ ...formData, timezone })} />
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                 <button type="button" onClick={() => { setShowAddModal(false); setEditingLoc(null); }} className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold cursor-pointer">Cancel</button>
                 <button type="submit" disabled={saving} className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black cursor-pointer flex items-center gap-2 disabled:opacity-60">
@@ -309,6 +292,7 @@ export default function LocationsPage() {
               Are you sure you want to delete <strong className="text-white">{deletingLoc.name}</strong>? This action cannot be undone.
             </p>
             <div className="flex justify-end gap-3 pt-1">
+              {toastMessage?.isError && <p role="alert" className="text-amber-200">{toastMessage.msg}</p>}
               <button onClick={() => setDeletingLoc(null)} className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 font-extrabold text-xs cursor-pointer">Cancel</button>
               <button onClick={handleConfirmDelete} disabled={saving} className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs flex items-center gap-2 disabled:opacity-60 cursor-pointer">
                 {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}

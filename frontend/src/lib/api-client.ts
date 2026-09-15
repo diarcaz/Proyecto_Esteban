@@ -6,9 +6,12 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3001/api/v1');
 if (!API_BASE) throw new Error('NEXT_PUBLIC_API_URL is required');
 
+import { ApiError } from './api-error';
+import { isPublicApiPath, recoverExpiredSession } from './session-recovery';
+
 function getAuthHeader(): Record<string, string> {
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('nexustaff_token');
+    const token = window.localStorage.getItem('nexustaff_token');
     if (token) {
       return { Authorization: `Bearer ${token}` };
     }
@@ -19,7 +22,7 @@ function getAuthHeader(): Record<string, string> {
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const headers = {
     'Content-Type': 'application/json',
-    ...getAuthHeader(),
+    ...(isPublicApiPath(path) ? {} : getAuthHeader()),
     ...(options?.headers || {}),
   };
 
@@ -29,12 +32,15 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
 
   if (!res.ok) {
+    if (res.status === 401 && !isPublicApiPath(path) && path !== '/auth/logout') {
+      recoverExpiredSession((headers as Record<string, string>).Authorization?.replace(/^Bearer /, '') || null);
+    }
     let errMsg = `Request failed: ${res.status} ${res.statusText}`;
     try {
       const data = await res.json();
       errMsg = data?.message || errMsg;
     } catch (_) {}
-    throw new Error(errMsg);
+    throw new ApiError(res.status, errMsg);
   }
 
   // 204 No Content

@@ -1,8 +1,8 @@
 import React from 'react';
 
 export const metadata = {
-  title: 'NexuStaff Touch Clock | Employee Kiosk Portal',
-  description: 'Touchscreen employee time tracking kiosk with PIN authentication',
+  title: 'NexuStaff Touch Clock | Staff Kiosk Portal',
+  description: 'Touchscreen staff time tracking kiosk with PIN authentication',
 };
 
 export default function ClockLayout({ children }: { children: React.ReactNode }) {

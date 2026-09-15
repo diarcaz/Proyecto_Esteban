@@ -2,6 +2,7 @@ import { AdminIdentity, isAdminRole, clearAuthStorage } from '@/lib/admin-access
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { authApi } from '@/lib/api-client';
+import { registerSessionCleanup, resetSessionRecovery } from '@/lib/session-recovery';
 
 export interface AdminUser extends AdminIdentity {
   id: string;
@@ -83,6 +84,7 @@ export const useAuthStore = create<AuthState>()(
               localStorage.setItem('nexustaff_token', res.tokens.accessToken);
               localStorage.setItem('nexustaff_user', JSON.stringify(userObj));
             }
+            resetSessionRecovery();
             set({
               isAuthenticated: true,
               user: userObj,
@@ -117,3 +119,5 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
+
+registerSessionCleanup(() => useAuthStore.setState({ isAuthenticated: false, user: null, token: null }));

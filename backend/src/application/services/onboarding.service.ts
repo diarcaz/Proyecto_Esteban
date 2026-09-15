@@ -1,4 +1,5 @@
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '@infrastructure/persistence/prisma/prisma.service';
 import { AuthorizationService } from '@domain/security/authorization.service';
 import { Permission } from '@domain/permissions/permission.enum';
@@ -82,7 +83,15 @@ export class OnboardingService {
       const property = await this.property(tx, actor, dto.propertyId, [Permission.STAFF_CREATE]);
       const { position } = await this.context(tx, dto);
       const user = await tx.user.create({ data: { companyId: property.companyId, firstName: dto.firstName.trim(), lastName: dto.lastName.trim(), employeeNumber: dto.employeeNumber,
-        email: dto.email || crypto.randomUUID() + '@employees.invalid', passwordHash, pinCodeHash, pinCodeEncrypted, role: 'WORKER', status: dto.status || 'ACTIVE', jobPositionCode: position.code }, select: { id: true } });
+        email: dto.email || crypto.randomUUID() + '@employees.invalid', passwordHash, pinCodeHash, pinCodeEncrypted, role: 'WORKER', status: dto.status || 'ACTIVE', jobPositionCode: position.code }, select: { id: true } }).catch((error: unknown) => {
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+            const target = error.meta?.target;
+            if (Array.isArray(target) && target.includes('email')) throw new ConflictException('A staff member with this email already exists.');
+            if (Array.isArray(target) && (target.includes('employee_number') || target.includes('employeeNumber'))) throw new ConflictException('A staff member with this staff number already exists.');
+            throw new ConflictException('A staff member with these details already exists.');
+          }
+          throw error;
+        });
       await this.insertAssignment(tx, user.id, { ...dto, active: true });
       await tx.auditLog.create({ data: { actorId: actor.id, action: 'EMPLOYEE_ONBOARDED', targetEntity: 'User:' + user.id, details: { propertyId: dto.propertyId, departmentId: dto.departmentId, positionId: dto.positionId } } });
       return user;

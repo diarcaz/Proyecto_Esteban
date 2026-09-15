@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { SESSION_EXPIRED_MESSAGE } from '@/lib/session-recovery';
 import { useAuthStore } from '@/store/use-auth-store';
 import { Building2, Lock, Mail, AlertCircle, ArrowRight } from 'lucide-react';
 
@@ -13,6 +14,8 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => { if (new URLSearchParams(window.location.search).get('session') === 'expired') setError(SESSION_EXPIRED_MESSAGE); }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,7 +72,7 @@ export default function AdminLoginPage() {
             <div className="relative">
               <Mail className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
               <input
-                type="email"
+                type="email" name="admin-username" autoComplete="username"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -84,7 +87,7 @@ export default function AdminLoginPage() {
             <div className="relative">
               <Lock className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
               <input
-                type="password"
+                type="password" name="admin-password" autoComplete="current-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

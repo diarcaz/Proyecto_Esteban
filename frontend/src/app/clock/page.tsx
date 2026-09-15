@@ -86,13 +86,13 @@ export default function ClockPage() {
       {!terminal ? <p>An authorized administrator must <Link href="/clock/setup" className="text-blue-700 underline">configure this terminal</Link> before clocking.</p> : <>
         <p className="text-center font-mono text-xl">{format(now)}</p>
         {step === 'IDLE' && <form onSubmit={verify} className="space-y-5">
-          <label className="block font-bold">Employee number
-            <input aria-label="Employee number" type="text" autoComplete="off" value={employeeNumber}
+          <label className="block font-bold">Staff number
+            <input aria-label="Staff number" name="clock-staff-number" type="text" autoComplete="off" autoCapitalize="none" spellCheck={false} readOnly onFocus={e => { e.currentTarget.readOnly = false; }} data-lpignore="true" value={employeeNumber}
               placeholder="EMP-1001" onChange={e => { setEmployeeNumber(e.target.value); touch(); }}
               className="w-full border-2 rounded-xl p-4 mt-2 text-xl" />
           </label>
           <label className="block font-bold">6-digit PIN
-            <input aria-label="6-digit PIN" type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={pin}
+            <input aria-label="6-digit PIN" name="clock-staff-pin" readOnly onFocus={e => { e.currentTarget.readOnly = false; }} data-lpignore="true" type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={pin}
               onChange={e => { setPin(e.target.value.replace(/\D/g, '').slice(0, 6)); touch(); }}
               className="w-full border-2 rounded-xl p-4 mt-2 text-xl tracking-widest" />
           </label>

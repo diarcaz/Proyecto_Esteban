@@ -41,8 +41,14 @@ export class LocationService {
 
   private validateTimezone(value: unknown): string {
     if (typeof value !== 'string' || !value.trim()) throw new BadRequestException('A valid IANA timezone is required.');
-    try { new Intl.DateTimeFormat('en', { timeZone: value }); } catch { throw new BadRequestException('A valid IANA timezone is required.'); }
-    return value;
+    const timezone = value.trim();
+    try { new Intl.DateTimeFormat('en', { timeZone: timezone }); } catch { throw new BadRequestException('A valid IANA timezone is required.'); }
+    return timezone;
+  }
+
+  private requiredText(value: unknown, label: string): string {
+    if (typeof value !== 'string' || !value.trim()) throw new BadRequestException(`Property ${label} is required.`);
+    return value.trim();
   }
 
   async create(dto: any, currentUser?: any) {
@@ -57,10 +63,10 @@ export class LocationService {
     const location = await this.prisma.location.create({
       data: {
         companyId,
-        name: dto.name,
-        address: dto.address,
+        name: this.requiredText(dto.name, 'name'),
+        address: this.requiredText(dto.address, 'address'),
         timezone: this.validateTimezone(dto.timezone ?? dto.city),
-        locationCode: dto.code || `LOC-${Date.now()}`,
+        locationCode: (typeof dto.code === 'string' ? dto.code.trim() : '') || `LOC-${Date.now()}`,
         operationalConfig: {
           create: {
             weekStartDay: dto.weekStartDay || 'MONDAY',
@@ -93,8 +99,8 @@ export class LocationService {
     return this.prisma.location.update({
       where: { id },
       data: {
-        name: dto.name ?? loc.name,
-        address: dto.address ?? loc.address,
+        name: this.requiredText(dto.name ?? loc.name, 'name'),
+        address: this.requiredText(dto.address ?? loc.address, 'address'),
         timezone: this.validateTimezone(dto.timezone ?? dto.city ?? loc.timezone),
         operationalConfig: {
           upsert: {
