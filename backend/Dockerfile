@@ -46,6 +46,5 @@ COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 EXPOSE 3001
 
 # Comando de inicio: aplica migraciones pendientes y arranca servidor NestJS
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
-
+CMD ["node", "scripts/startup.cjs"]
 
