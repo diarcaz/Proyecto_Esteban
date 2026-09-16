@@ -26,7 +26,7 @@ export function canOpenAdminRoute(user: AdminIdentity | null | undefined, route:
   const rules: Record<string, string[]> = {
     '/admin/punches': ['TIME_VIEW'], '/admin/schedules': ['TIME_VIEW'],
     '/admin/employees': ['STAFF_VIEW'], '/admin/locations': ['PROPERTY_VIEW'],
-    '/admin/reports': ['VIEW_PAYROLL', 'VIEW_INVOICES'],
+    '/admin/reports': ['TIME_VIEW', 'VIEW_PAYROLL', 'VIEW_INVOICES'],
   };
   if (route.startsWith('/admin/settings')) return user.role === 'SUPER_ADMIN';
   const key = Object.keys(rules).find(p => route === p || route.startsWith(p + '/'));

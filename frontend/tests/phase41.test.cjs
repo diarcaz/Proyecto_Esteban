@@ -40,7 +40,7 @@ test('restricted navigation requires actual permission and selected property sco
   const permitted = { ...manager, permissions: ['TIME_VIEW'] };
   assert.equal(access.canOpenAdminRoute(permitted, '/admin/punches', property.id), true);
   assert.equal(access.canOpenAdminRoute(permitted, '/admin/punches', 'foreign'), false);
-  assert.equal(access.canOpenAdminRoute(permitted, '/admin/reports', property.id), false);
+  assert.equal(access.canOpenAdminRoute(permitted, '/admin/reports', property.id), true);
   assert.equal(access.canOpenAdminRoute(permitted, '/admin/settings'), false);
 });
 test('property-specific permissions cannot authorize a different property', () => {

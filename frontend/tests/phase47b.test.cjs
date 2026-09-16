@@ -8,7 +8,7 @@ let cursor=0,state=[],posted,failed;
 const load=Module._load;Module._load=function(r,...a){
  if(r==='react')return {...React,useState(initial){const i=cursor++;if(!(i in state))state[i]=typeof initial==='function'?initial():initial;return[state[i],v=>state[i]=v];},useEffect:()=>{},useCallback:f=>f};
  if(r==='@/store/use-auth-store')return {useAuthStore:()=>({user:{role:'SUPER_ADMIN'}})};
- if(r==='@/store/use-location-store')return {useLocationStore:{getState:()=>({fetchLocations:()=>{}})}};
+ if(r==='@/store/use-location-store')return {useLocationStore:Object.assign(()=>({selectedLocationId:'ALL'}),{getState:()=>({fetchLocations:()=>{}})})};
  if(r==='@/lib/api-client')return {locationsApi:{create:async p=>{posted=p;if(failed)throw failed;},list:async()=>[]}};
  return load.call(this,r,...a);
 };

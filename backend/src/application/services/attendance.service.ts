@@ -1,3 +1,4 @@
+import { pinLookupDigest, kioskClientDigest, assertPinLookupKey } from '@infrastructure/security/pin-lookup';
 import { resolvePropertyReadScope } from '@domain/security/property-read-scope';
 import { resolveEmployeeClockAssignment } from './employee-clock-context';
 import { AuthorizationService } from '@domain/security/authorization.service';
@@ -7,7 +8,7 @@ import { PrismaService } from '@infrastructure/persistence/prisma/prisma.service
 import { RedisService } from '@infrastructure/cache/redis.service';
 import { WorkShiftService } from './work-shift.service';
 import { assertLocationAccess } from '@infrastructure/auth/location-access.util';
-import { StandardClockDto, KioskClockDto, KioskStatusDto, PunchQueryDto } from '@adapters/dtos/attendance.dtos';
+import { StandardClockDto, KioskClockDto, KioskStatusDto, KioskPinDto, PunchQueryDto } from '@adapters/dtos/attendance.dtos';
 import { AttendanceType, AttendanceStatus, AttendanceMethod } from '@domain/entities/attendance-log.entity';
 import * as bcrypt from 'bcrypt';
 
@@ -126,6 +127,41 @@ export class AttendanceService {
    * Evaluates kiosk employee status, active shift, and allowed punch actions.
    * Returns ZERO financial fields. Pure evaluation complying with Constraint 4.
    */
+  async identifyKioskPin(dto: KioskPinDto, clientAddress: string) {
+    const digest = pinLookupDigest(dto.pin_code);
+    const client = kioskClientDigest(clientAddress);
+    // Per-client admission limit, not a branch-wide failure lockout. Redis outages fail closed.
+    const attempts = await this.kioskLockout(() => this.redisService.incrementFailedAttempts('kiosk_client:' + client, 60, true));
+    if (attempts > 60) throw new UnauthorizedException('Too many PIN attempts. Please wait one minute.');
+    const location = await this.resolveKioskProperty(dto.property_id, dto.location_code);
+    const failureKey = 'kiosk_hint:' + location.id + ':' + digest;
+    if (await this.kioskLockout(() => this.redisService.getFailedAttempts(failureKey, true)) >= 5) {
+      throw new UnauthorizedException('PIN identification temporarily locked. Please try later.');
+    }
+    await assertPinLookupKey(this.prisma);
+    const timestamp = new Date();
+    const eligibility = { companyId: location.companyId, status: 'ACTIVE' as const, employeeAssignments: { some: {
+      propertyId: location.id, active: true, effectiveFrom: { lte: timestamp },
+      OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: timestamp } }],
+    } } };
+    if (await this.prisma.user.findFirst({ where: { ...eligibility, pinCodeHash: { not: null }, pinLookupDigest: null }, select: { id: true } })) {
+      throw new ServiceUnavailableException('Branch PIN enrollment is incomplete. Contact your administrator.');
+    }
+    const candidates = await this.prisma.user.findMany({
+      where: { companyId: location.companyId, pinLookupDigest: digest, status: 'ACTIVE', employeeAssignments: { some: {
+        propertyId: location.id, active: true, effectiveFrom: { lte: timestamp },
+        OR: [{ effectiveUntil: null }, { effectiveUntil: { gte: timestamp } }],
+      } } },
+      select: { employeeNumber: true }, take: 2,
+    });
+    if (candidates.length !== 1) {
+      await this.kioskLockout(() => this.redisService.incrementFailedAttempts(failureKey, 900, true));
+      throw new UnauthorizedException('Unable to verify staff PIN. Contact your administrator.');
+    }
+    // Indexed identity hint only; canonical status still checks bcrypt, account lockout and assignment.
+    return this.getKioskEmployeeStatus({ ...dto, employee_number: candidates[0].employeeNumber, property_id: location.id });
+  }
+
   async getKioskEmployeeStatus(dto: KioskStatusDto) {
     const timestamp = new Date();
     const { user, location, assignment } = await this.resolveKioskIdentityAndContext(

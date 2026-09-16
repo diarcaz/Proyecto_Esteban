@@ -1,3 +1,6 @@
+import { PeriodApprovalService } from '@application/services/period-approval.service';
+import { PeriodApprovalController } from '@adapters/controllers/period-approval.controller';
+import { PeriodExportService } from './application/services/period-export.service';
 import { OnboardingService } from '@application/services/onboarding.service';
 import { OnboardingController } from '@adapters/controllers/onboarding.controller';
 import { Module } from '@nestjs/common';
@@ -47,6 +50,7 @@ import { TimeCorrectionController } from '@adapters/controllers/time-correction.
   ],
   controllers: [
     HealthController,
+    PeriodApprovalController,
     OnboardingController,
     AttendanceController,
     TimeCorrectionController,
@@ -63,6 +67,8 @@ import { TimeCorrectionController } from '@adapters/controllers/time-correction.
     TimeCorrectionService,
     AttendanceService,
     ReportsService,
+    PeriodExportService,
+    PeriodApprovalService,
     StaffService,
     OnboardingService,
     LocationService,

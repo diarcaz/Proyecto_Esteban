@@ -1,4 +1,7 @@
-import { Controller, Get, Query, Res, UseInterceptors, HttpCode, HttpStatus, Req, UseGuards, ForbiddenException } from '@nestjs/common';
+import { PeriodExportService } from '@application/services/period-export.service';
+import { PeriodExportDto } from '@adapters/dtos/period-export.dto';
+import { PropertyRead } from '@adapters/decorators/property-read.decorator';
+import { Controller, Get, Query, Res, UseInterceptors, HttpCode, HttpStatus, HttpException, ServiceUnavailableException, Req, UseGuards, ForbiddenException } from '@nestjs/common';
 import { Response } from 'express';
 import { ReportsService } from '@application/services/reports.service';
 import { PunchQueryDto } from '@adapters/dtos/attendance.dtos';
@@ -13,7 +16,32 @@ import { Permission } from '@domain/permissions/permission.enum';
 @Controller('api/v1/reports')
 @UseGuards(TenantGuard, PermissionsGuard)
 export class ReportsController {
-  constructor(private readonly reportsService: ReportsService) {}
+  constructor(private readonly reportsService: ReportsService, private readonly periodExports: PeriodExportService) {}
+  @Get('attendance/detail.csv')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.LOCATION_ADMIN, UserRole.SUPERVISOR)
+  @PropertyRead(Permission.TIME_VIEW)
+  @RequirePermissions(Permission.TIME_VIEW)
+  async detail(@Query() query: PeriodExportDto, @Req() req: any, @Res() res: Response) {
+    return this.periodCsv('detail',query,req,res);
+  }
+  @Get('attendance/summary.csv')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.LOCATION_ADMIN, UserRole.SUPERVISOR)
+  @PropertyRead(Permission.TIME_VIEW)
+  @RequirePermissions(Permission.TIME_VIEW)
+  async summary(@Query() query: PeriodExportDto, @Req() req: any, @Res() res: Response) {
+    return this.periodCsv('summary',query,req,res);
+  }
+  private async periodCsv(kind:'detail'|'summary',query:PeriodExportDto,req:any,res:Response) {
+    try {
+      const buffer=await this.periodExports.csv(kind,query,req.user,req.headers||{});
+      res.set({'Content-Type':'text/csv; charset=utf-8','Content-Disposition':'attachment; filename="attendance-'+kind+'.csv"','Cache-Control':'no-store'});
+      return res.send(buffer);
+    } catch(error) {
+      if(error instanceof HttpException) throw error;
+      throw new ServiceUnavailableException('Period export unavailable. No partial export was returned.');
+    }
+  }
+
 
   @Get('time-punches/pdf')
   @Roles(UserRole.SUPER_ADMIN, UserRole.LOCATION_ADMIN, UserRole.SUPERVISOR)

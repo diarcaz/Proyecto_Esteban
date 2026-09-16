@@ -1,3 +1,4 @@
+import { pinLookupDigest, lockPinIndex, assertNoPinConflict } from '@infrastructure/security/pin-lookup';
 import { Injectable, BadRequestException, ForbiddenException, NotFoundException, ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@infrastructure/persistence/prisma/prisma.service';
@@ -80,10 +81,11 @@ export class OnboardingService {
     const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
     const pinCodeHash = await bcrypt.hash(dto.pinCode, 10), pinCodeEncrypted = encryptPin(dto.pinCode);
     return this.prisma.$transaction(async tx => {
+      await lockPinIndex(tx);
       const property = await this.property(tx, actor, dto.propertyId, [Permission.STAFF_CREATE]);
       const { position } = await this.context(tx, dto);
       const user = await tx.user.create({ data: { companyId: property.companyId, firstName: dto.firstName.trim(), lastName: dto.lastName.trim(), employeeNumber: dto.employeeNumber,
-        email: dto.email || crypto.randomUUID() + '@employees.invalid', passwordHash, pinCodeHash, pinCodeEncrypted, role: 'WORKER', status: dto.status || 'ACTIVE', jobPositionCode: position.code }, select: { id: true } }).catch((error: unknown) => {
+        email: dto.email || crypto.randomUUID() + '@employees.invalid', passwordHash, pinCodeHash, pinCodeEncrypted, pinLookupDigest: pinLookupDigest(dto.pinCode), role: 'WORKER', status: dto.status || 'ACTIVE', jobPositionCode: position.code }, select: { id: true } }).catch((error: unknown) => {
           if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
             const target = error.meta?.target;
             if (Array.isArray(target) && target.includes('email')) throw new ConflictException('A staff member with this email already exists.');
@@ -93,12 +95,14 @@ export class OnboardingService {
           throw error;
         });
       await this.insertAssignment(tx, user.id, { ...dto, active: true });
+      await assertNoPinConflict(tx, user.id);
       await tx.auditLog.create({ data: { actorId: actor.id, action: 'EMPLOYEE_ONBOARDED', targetEntity: 'User:' + user.id, details: { propertyId: dto.propertyId, departmentId: dto.departmentId, positionId: dto.positionId } } });
       return user;
     });
   }
   async add(userId: string, dto: AssignmentDto, actor: any) {
     return this.prisma.$transaction(async tx => {
+      await lockPinIndex(tx);
       await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
       const user = await this.employee(tx, actor, userId);
       const property = await this.property(tx, actor, dto.propertyId, [Permission.STAFF_EDIT]);
@@ -106,12 +110,14 @@ export class OnboardingService {
       if (user.role !== 'WORKER') throw new BadRequestException('Beta operational assignments are for WORKER accounts.');
       await this.context(tx, dto);
       const result = await this.insertAssignment(tx, userId, dto);
+      await assertNoPinConflict(tx, userId);
       await tx.auditLog.create({ data: { actorId: actor.id, action: 'EMPLOYEE_ASSIGNMENT_ADDED', targetEntity: 'EmployeeAssignment:' + result.id, details: { userId, propertyId: dto.propertyId } } });
       return result;
     });
   }
   async deactivate(userId: string, assignmentId: string, actor: any) {
     return this.prisma.$transaction(async tx => {
+      await lockPinIndex(tx);
       await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
       await this.employee(tx, actor, userId);
       const assignment = await tx.employeeAssignment.findUnique({ where: { id: assignmentId } });
@@ -133,7 +139,7 @@ export class OnboardingService {
     if (!allowed.length && !this.authz.hasCompanyPermission(actor, Permission.STAFF_VIEW, user.companyId)) throw new ForbiddenException('Staff view permission required.');
     const readiness = await Promise.all(allowed.map(async p => {
       let clockReady = false;
-      try { await resolveEmployeeClockAssignment(this.prisma, userId, p.id, new Date()); clockReady = user.status === 'ACTIVE' && !!user.pinCodeHash; } catch {}
+      try { await resolveEmployeeClockAssignment(this.prisma, userId, p.id, new Date()); clockReady = user.status === 'ACTIVE' && !!user.pinCodeHash && !!user.pinLookupDigest; } catch {}
       return { propertyId: p.id, name: p.name, clockReady, canEdit: this.authz.hasPermission(actor, Permission.STAFF_EDIT, p.id, p.companyId) };
     }));
     return { id: user.id, firstName: user.firstName, lastName: user.lastName, employeeNumber: user.employeeNumber, status: user.status,

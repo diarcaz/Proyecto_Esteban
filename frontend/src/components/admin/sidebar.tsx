@@ -6,7 +6,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/use-auth-store';
-import { useLocationStore, isLocationMatching } from '@/store/use-location-store';
+import { useLocationStore } from '@/store/use-location-store';
 import { staffApi } from '@/lib/api-client';
 
 import {
@@ -32,7 +32,7 @@ const NAV_ITEMS = [
   { label: 'Staff Directory', href: '/admin/employees', icon: Users, isStaffBadge: true },
   { label: 'Reports & Payroll', href: '/admin/reports', icon: FileBarChart },
   { label: 'Branch Locations', href: '/admin/locations', icon: MapPin, superAdminOnly: true },
-  { label: 'Settings & Audit', href: '/admin/settings', icon: Settings, superAdminOnly: true },
+  { label: 'Settings', href: '/admin/settings', icon: Settings, superAdminOnly: true },
 ];
 
 export function Sidebar() {
@@ -55,10 +55,7 @@ export function Sidebar() {
             if (item.role === 'SUPER_ADMIN' || item.jobPositionCode === 'SUPER_ADMIN' || item.employeeNumber?.startsWith('ADM-')) {
               return false;
             }
-            if (!isSuperAdmin) {
-              return isLocationMatching(item.assignments?.[0]?.locationId || item.locationId, item.assignments?.[0]?.location?.locationCode || item.locationCode, selectedLocationId);
-            }
-            return true;
+            return selectedLocationId === 'ALL' || item.employeeAssignments?.some((a: any) => a.propertyId === selectedLocationId) || item.assignments?.some((a: any) => a.locationId === selectedLocationId);
           });
           setStaffCount(filtered.length);
           return;
@@ -74,11 +71,11 @@ export function Sidebar() {
     router.push('/admin/login');
   };
 
-  const visibleNavItems = NAV_ITEMS.filter(item => !['/admin/schedules', '/admin/settings', '/admin/reports'].includes(item.href)).filter(item => canOpenAdminRoute(user, item.href, selectedLocationId));
+  const visibleNavItems = NAV_ITEMS.filter(item => canOpenAdminRoute(user, item.href, selectedLocationId));
 
   return (
     <aside
-      className={`relative flex flex-col border-r border-slate-800 bg-slate-950 text-slate-100 transition-all duration-300 ${
+      className={`admin-sidebar shrink-0 relative flex flex-col border-r border-slate-800 bg-slate-950 text-slate-100 transition-all duration-300 ${
         collapsed ? 'w-20' : 'w-64'
       }`}
     >
@@ -123,6 +120,7 @@ export function Sidebar() {
           return (
             <Link
               key={item.href}
+              title={item.label}
               href={item.href}
               className={`flex items-center justify-between rounded-xl px-3.5 py-3 text-xs font-extrabold transition-all relative ${
                 isActive

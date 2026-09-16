@@ -35,6 +35,26 @@ export class PermissionsGuard implements CanActivate {
       throw new UnauthorizedException('User is not authenticated.');
     }
 
+    if (requiredPermissions.includes(Permission.TIME_APPROVE)) {
+      const target = this.reflector.get<string>('APPROVAL_TARGET', context.getHandler());
+      if (target !== 'correction' || !this.prisma || !request.params?.id ||
+          !['SUPER_ADMIN','OWNER','ADMIN','MANAGER','LOCATION_ADMIN','SUPERVISOR'].includes(user.role)) {
+        throw new ForbiddenException('Authoritative approval context required.');
+      }
+      return this.prisma.timeCorrectionRequest.findUnique({
+        where: { id: request.params.id }, select: { propertyId: true, property: { select: { companyId: true } } },
+      }).then(record => {
+        if (!record?.property?.companyId) throw new ForbiddenException('Approval target unavailable.');
+        const claims = [request.headers?.['x-property-id'], request.headers?.['x-location-id'], request.body?.property_id, request.body?.location_id, request.query?.property_id, request.query?.location_id].filter(v => v !== undefined);
+        if (claims.some(v => v !== record.propertyId)) throw new ForbiddenException('Approval property context mismatch.');
+        for (const permission of requiredPermissions) {
+          this.authzService.assertPropertyAccess(user, record.propertyId, record.property.companyId);
+          this.authzService.assertPermission(user, permission, record.propertyId, record.property.companyId);
+        }
+        return true;
+      });
+    }
+
     if (this.reflector.getAllAndOverride<boolean>('SERVER_PROPERTY_SCOPE', [context.getHandler(), context.getClass()])) {
       // Preliminary PIN capability check; StaffService then checks the actual target employee/company/property.
       for (const permission of requiredPermissions) {

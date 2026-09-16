@@ -258,6 +258,8 @@ export async function runWorkShiftServiceTests() {
       },
     },
     $queryRaw: async () => [],
+    $executeRawUnsafe: async () => 1,
+    timesheet: { findMany: async () => [] },
     $transaction: async (fn: any) => await fn(mockPrisma),
   };
 

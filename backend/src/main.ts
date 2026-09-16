@@ -1,3 +1,4 @@
+import { pinLookupKey } from './infrastructure/security/pin-lookup';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe, Logger } from '@nestjs/common';
@@ -11,6 +12,7 @@ async function bootstrap() {
 
   // Phase 3.2 (K): Fail-fast startup validation — MUST run before NestFactory.create
   validateProductionEnvironment();
+  pinLookupKey();
   validatePinEncryptionKeyOrDie();
   logger.log('✓ PIN_ENCRYPTION_KEY validated successfully.');
 

@@ -2,6 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .panel { @apply rounded-2xl border border-slate-800 bg-slate-900/60; }
+  .page-title { @apply text-2xl sm:text-3xl font-bold tracking-tight text-white mb-2; }
+  .eyebrow { @apply text-[10px] font-bold uppercase tracking-[0.2em] text-blue-400 mb-2; }
+  .status-badge { @apply inline-flex rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-[10px] font-bold tracking-wide text-slate-300; }
+  .data-table { @apply w-full text-left text-sm; }
+  .data-table th { @apply bg-slate-900 px-4 py-3 text-[10px] uppercase tracking-wider font-semibold text-slate-400; }
+  .data-table td { @apply border-t border-slate-800 px-4 py-4 text-slate-300; }
+  .data-table tbody tr { @apply hover:bg-slate-800/40; }
+}
+@media (max-width: 767px) {
+  .admin-sidebar { width: 64px !important; }
+  .admin-sidebar span, .admin-sidebar nav ~ div span { display: none; }
+  .admin-sidebar > div:first-child { padding: 8px; }
+  .admin-sidebar > div:first-child > button, .admin-sidebar > div:nth-child(2) { display: none; }
+  .admin-sidebar nav { padding: 6px; }
+  .admin-sidebar nav a { padding: 14px; }
+}
+
 @layer base {
   html, body {
     @apply bg-slate-950 text-slate-100 antialiased font-sans selection:bg-blue-600 selection:text-white;

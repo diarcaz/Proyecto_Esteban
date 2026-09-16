@@ -11,10 +11,11 @@ import { useAuthStore } from '@/store/use-auth-store';
 import Link from 'next/link';
 import { Plus, Building2, Edit3, ShieldCheck, Trash2, AlertTriangle, CheckCircle2, Loader2, RefreshCw, ShieldAlert } from 'lucide-react';
 
-type PropertyRow = { id: string; name: string; code: string; address: string; timezone: string; activeStaffCount: number };
+type PropertyRow = { id: string; name: string; code: string; address: string; timezone: string; activeStaffCount: number | null };
 
 export default function LocationsPage() {
   const { user } = useAuthStore();
+  const { selectedLocationId } = useLocationStore();
   const isSuperAdmin = can(user, 'PROPERTY_VIEW');
   const canCreate = can(user, 'PROPERTY_MANAGE') && ['SUPER_ADMIN', 'OWNER', 'ADMIN'].includes(user?.role || '');
   const canDelete = can(user, 'PROPERTY_MANAGE') && ['SUPER_ADMIN', 'OWNER'].includes(user?.role || '');
@@ -53,7 +54,7 @@ export default function LocationsPage() {
           code: loc.code,
           address: loc.address || '',
           timezone: loc.timezone || loc.city || '',
-          activeStaffCount: loc._count?.assignments || loc.assignments?.length || 0,
+          activeStaffCount: loc.activeStaffCount ?? loc._count?.assignments ?? null,
         }));
         setLocations(mapped);
       } else {
@@ -199,7 +200,7 @@ export default function LocationsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {locations.map((loc) => (
+          {locations.filter(loc => selectedLocationId === 'ALL' || loc.id === selectedLocationId).map((loc) => (
             <div key={loc.id} className="connecteam-glass-card rounded-2xl p-5 border border-slate-800 space-y-4 relative">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-3">
@@ -216,8 +217,8 @@ export default function LocationsPage() {
 
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1">
-                  <span className="text-[10px] text-slate-500 font-bold uppercase">Active Staff On-Site</span>
-                  <p className="text-lg font-black text-white">{loc.activeStaffCount} Staff Members</p>
+                  <span className="text-[10px] text-slate-500 font-bold uppercase">Linked staff records</span>
+                  <p className="text-lg font-black text-white">{loc.activeStaffCount ?? '—'}</p><p className="text-[10px] text-slate-500">Not a live on-site count</p>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1">
                   <Link href="/clock/setup" className="text-blue-400 underline">Clock terminal setup</Link>
@@ -226,7 +227,7 @@ export default function LocationsPage() {
 
               <div className="flex items-center justify-between border-t border-slate-800 pt-3 text-xs">
                 <span className="text-emerald-400 text-[10px] font-bold uppercase flex items-center gap-1">
-                  <ShieldCheck className="h-3.5 w-3.5" /> Status: Active &amp; Synced
+                  <ShieldCheck className="h-3.5 w-3.5" /> Authorized branch
                 </span>
                 <div className="flex items-center gap-2">
                   <button disabled={!can(user, 'PROPERTY_MANAGE', loc.id)} onClick={() => openEditModal(loc)} className="flex items-center gap-1 text-slate-400 hover:text-white font-bold cursor-pointer">
@@ -285,7 +286,7 @@ export default function LocationsPage() {
               </div>
               <div>
                 <h3 className="text-lg font-black tracking-tight text-white">Confirm Location Deletion</h3>
-                <p className="text-xs text-rose-300 font-semibold">This will also delete all associated attendance logs.</p>
+                <p className="text-xs text-rose-300 font-semibold">Branches with related records cannot be deleted.</p>
               </div>
             </div>
             <p className="text-xs text-slate-300 p-4 rounded-2xl bg-slate-950 border border-slate-800">

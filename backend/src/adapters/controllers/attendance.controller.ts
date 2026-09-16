@@ -1,5 +1,5 @@
 import { PropertyRead } from '@adapters/decorators/property-read.decorator';
-import { KioskClockDto, KioskStatusDto } from '@adapters/dtos/attendance.dtos';
+import { KioskClockDto, KioskStatusDto, KioskPinDto } from '@adapters/dtos/attendance.dtos';
 import { Controller, Get, Post, Patch, Body, Param, Query, BadRequestException, NotFoundException, ForbiddenException, UnauthorizedException, Req, UseGuards, HttpException } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -46,6 +46,17 @@ export class AttendanceController {
     } catch (e: any) {
       if (e instanceof HttpException) throw e;
       throw new BadRequestException('Failed to record proxy attendance punch');
+    }
+  }
+
+  @Post('kiosk-identify')
+  @Public()
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  async kioskIdentify(@Body() body: KioskPinDto, @Req() req: any) {
+    try { return await this.attendanceService.identifyKioskPin(body, req.ip || req.socket?.remoteAddress); }
+    catch (e: unknown) {
+      if (e instanceof HttpException) throw e;
+      throw new BadRequestException('Unable to verify PIN. Please contact your administrator.');
     }
   }
 

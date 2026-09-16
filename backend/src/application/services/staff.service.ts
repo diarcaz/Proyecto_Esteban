@@ -1,3 +1,4 @@
+import { pinLookupDigest, lockPinIndex, assertNoPinConflict } from '@infrastructure/security/pin-lookup';
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '@infrastructure/persistence/prisma/prisma.service';
 import { encryptPin, decryptPin } from '@infrastructure/security/pin-encryption.util';
@@ -346,16 +347,19 @@ export class StaffService {
     const pinCodeHash = await bcrypt.hash(newPinCode, 10);
     const pinCodeEncrypted = encryptPin(newPinCode);
 
-    await this.prisma.user.update({
+    await this.prisma.$transaction(async tx => {
+      await lockPinIndex(tx);
+    await tx.user.update({
       where: { id },
       data: {
         pinCodeHash,
         pinCodeEncrypted,
+        pinLookupDigest: pinLookupDigest(newPinCode),
       },
     });
 
     // Security Audit Log
-    await this.prisma.auditLog.create({
+    await tx.auditLog.create({
       data: {
         actorId: currentUser.id,
         action: 'RESET_EMPLOYEE_PIN',
@@ -366,6 +370,9 @@ export class StaffService {
           authorizingPropertyId: authorizingPropId || null,
         },
       },
+    });
+
+      await assertNoPinConflict(tx, id);
     });
 
     return {
@@ -415,7 +422,7 @@ export class StaffService {
           : this.authzService.hasCompanyPermission(currentUser, Permission.VIEW_PAY_RATE, targetCompanyId))
       : true;
 
-    const user = await this.prisma.user.create({
+    const create = (tx: any) => tx.user.create({
       data: {
         companyId: targetCompanyId,
         employeeNumber: dto.employeeNumber || `EMP-${Date.now()}`,
@@ -426,6 +433,7 @@ export class StaffService {
         jobPositionCode: dto.jobPositionCode || 'STAFF',
         pinCodeHash,
         pinCodeEncrypted,
+        pinLookupDigest: dto.pinCode ? pinLookupDigest(dto.pinCode) : null,
         preferredLanguage: dto.preferredLanguage || 'es',
         role: dto.role || 'WORKER',
         permissions: dto.permissions || [],
@@ -433,6 +441,11 @@ export class StaffService {
       },
       select: this.getStaffSelect(canViewPayRate),
     });
+
+    const user = dto.pinCode ? await this.prisma.$transaction(async tx => {
+      await lockPinIndex(tx);
+      return create(tx);
+    }) : await create(this.prisma);
 
     if (dto.locationId) {
       await this.prisma.userLocationAssignment.create({
@@ -512,7 +525,7 @@ export class StaffService {
           : this.authzService.hasCompanyPermission(currentUser, Permission.VIEW_PAY_RATE, user.companyId))
       : true;
 
-    const updated = await this.prisma.user.update({
+    const write = (tx: any) => tx.user.update({
       where: { id },
       data: {
         firstName: dto.firstName ?? undefined,
@@ -521,12 +534,18 @@ export class StaffService {
         status: dto.status === 'ACTIVE' || dto.status === 'TERMINATED' ? dto.status : undefined,
         role: dto.role ?? undefined,
         permissions: dto.permissions ?? undefined,
-        pinCodeHash,
-        pinCodeEncrypted,
+        ...(dto.pinCode ? { pinCodeHash, pinCodeEncrypted, pinLookupDigest: pinLookupDigest(dto.pinCode) } : {}),
         preferredLanguage: dto.preferredLanguage ?? undefined,
       },
       select: this.getStaffSelect(canViewPayRate),
     });
+
+    const updated = dto.pinCode || dto.status === 'ACTIVE' ? await this.prisma.$transaction(async tx => {
+      await lockPinIndex(tx);
+      const result = await write(tx);
+      await assertNoPinConflict(tx, id);
+      return result;
+    }) : await write(this.prisma);
 
     if (dto.locationId) {
       await this.prisma.userLocationAssignment.deleteMany({ where: { userId: id } });

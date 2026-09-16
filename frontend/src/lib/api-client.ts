@@ -19,7 +19,7 @@ function getAuthHeader(): Record<string, string> {
   return {};
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+async function request<T>(path: string, options?: RequestInit, blob = false): Promise<T> {
   const headers = {
     'Content-Type': 'application/json',
     ...(isPublicApiPath(path) ? {} : getAuthHeader()),
@@ -45,7 +45,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   // 204 No Content
   if (res.status === 204) return undefined as T;
-  return res.json();
+  return blob ? res.blob() as Promise<T> : res.json();
 }
 
 /* ─── Auth ───────────────────────────────────────────────────────────────── */
@@ -76,6 +76,8 @@ export const attendanceApi = {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
     return request<any[]>(`/attendance/punches${qs}`);
   },
+  kioskIdentify: (data: { pin_code: string; property_id: string }) =>
+    request<any>('/attendance/kiosk-identify', { method: 'POST', body: JSON.stringify(data) }),
   kioskStatus: (data: { employee_number: string; pin_code: string; property_id?: string; location_code?: string }) =>
     request<any>('/attendance/kiosk-status', { method: 'POST', body: JSON.stringify(data) }),
   kioskClock: (data: { employee_number: string; pin_code: string; property_id?: string; location_code?: string; type: string; photo_url?: string; device_info?: any }) =>
@@ -114,4 +116,16 @@ export const onboardingApi = {
   deactivate: (id: string, assignmentId: string) => request<any>(`/onboarding/employees/${id}/assignments/${assignmentId}/deactivate`, { method: 'PATCH' }),
   pin: (id: string) => request<any>(`/staff/${id}/pin`),
   resetPin: (id: string, pinCode: string) => request<any>(`/staff/${id}/pin`, { method: 'PATCH', body: JSON.stringify({ pinCode }) }),
+};
+
+export const reportsApi = {
+  periodCsv: (kind: 'detail' | 'summary', params: Record<string,string>) => request<Blob>('/reports/attendance/' + kind + '.csv?' + new URLSearchParams(params), undefined, true),
+};
+export const periodApprovalApi = {
+  list: (locationId:string)=>request<any[]>('/period-approvals?location_id='+encodeURIComponent(locationId)),
+  resolve: (locationId:string,start:string,type:string)=>request<any>('/period-approvals/resolve',{method:'POST',body:JSON.stringify({locationId,start,type})}),
+  review: (id:string)=>request<any>('/period-approvals/'+id),
+  submit: (id:string,reviewToken:string)=>request<any>('/period-approvals/'+id+'/submit',{method:'POST',body:JSON.stringify({reviewToken})}),
+  transition: (id:string,version:number,action:string,notes:string)=>request<any>('/period-approvals/timesheets/'+id+'/transition',{method:'POST',body:JSON.stringify({version,action,notes})}),
+  configure: (id:string,steps:any[])=>request<any>('/period-approvals/workflow/'+id,{method:'POST',body:JSON.stringify({steps})}),
 };

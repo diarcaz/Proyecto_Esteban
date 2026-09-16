@@ -24,12 +24,7 @@ export class StandardClockDto {
   location_coordinates?: { latitude: number; longitude: number; accuracy?: number };
 }
 
-export class KioskStatusDto {
-  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
-  @IsString()
-  @IsNotEmpty()
-  employee_number!: string;
-
+export class KioskPinDto {
   @IsString()
   @Matches(/^\d{6}$/, { message: 'PIN must contain exactly 6 digits.' })
   pin_code!: string;
@@ -43,6 +38,13 @@ export class KioskStatusDto {
   @IsString()
   @IsNotEmpty()
   location_code?: string;
+}
+
+export class KioskStatusDto extends KioskPinDto {
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString()
+  @IsNotEmpty()
+  employee_number!: string;
 }
 
 export class KioskClockDto extends KioskStatusDto {

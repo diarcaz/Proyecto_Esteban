@@ -26,6 +26,8 @@ export default function EmployeesPage() {
   const [pin, setPin] = useState<string|null>(null), [newPin, setNewPin] = useState('');
   const [newDepartment, setNewDepartment] = useState({ name: '', code: '' }), [newPosition, setNewPosition] = useState({ name: '', code: '' });
   const generation = useRef(0);
+  const [search, setSearch] = useState('');
+  useEffect(() => { generation.current++; setDetail(null); setSelectedId(''); setPin(null); setNewPin(''); setMode(null); }, [selectedLocationId]);
   async function refresh() {
     const data = await staffApi.list();
     if (!Array.isArray(data)) throw new Error('Unable to load staff.');
@@ -49,6 +51,10 @@ export default function EmployeesPage() {
     try { const data = await onboardingApi.details(id); if (current === generation.current) setDetail(data); }
     catch { if (current === generation.current) setError('Unable to load staff assignments.'); }
   }
+  function toggle(id: string) {
+    if (id !== selectedId) { void select(id); return; }
+    generation.current++; setSelectedId(''); setDetail(null); setPin(null); setNewPin(''); setMode(null); setError('');
+  }
   async function action(work:()=>Promise<void>) { setBusy(true); setError(''); setNotice(''); try { await work(); } catch (e:any) { setError(e.message || 'Operation failed. Nothing was confirmed saved.'); } finally { setBusy(false); } }
   function open(mode:'create'|'assignment') { setMode(mode); setPin(null); setAssignment({ ...emptyAssignment(), propertyId: selectedLocationId !== 'ALL' ? selectedLocationId : '' }); setIdentity({ firstName:'', lastName:'', employeeNumber:'', email:'', pinCode:'', status:'ACTIVE' }); setCatalog(null); setError(''); }
   async function submit(e:React.FormEvent) {
@@ -60,13 +66,15 @@ export default function EmployeesPage() {
       setIdentity(i=>({...i,pinCode:''})); setMode(null); await refresh(); await select(id); setNotice('Saved. Clock readiness is evaluated by the server below.');
     });
   }
-  const filtered = employees.filter(e => selectedLocationId === 'ALL' || e.employeeAssignments?.some((a:any)=>a.propertyId===selectedLocationId) || e.assignments?.some((a:any)=>a.locationId===selectedLocationId));
+  const filtered = employees.filter(e => (selectedLocationId === 'ALL' || e.employeeAssignments?.some((a:any)=>a.propertyId===selectedLocationId) || e.assignments?.some((a:any)=>a.locationId===selectedLocationId)) && `${e.employeeNumber} ${e.firstName} ${e.lastName}`.toLowerCase().includes(search.toLowerCase()));
   const canSubmit = can(user, mode === 'create' ? 'STAFF_CREATE' : 'STAFF_EDIT', assignment.propertyId);
   return <section className="space-y-5 text-slate-200">
-    <header className="flex justify-between gap-4"><div><h2 className="text-2xl font-bold">Staff & work assignments</h2><p className="text-sm text-slate-400">A work assignment with a department and position is required for /clock.</p></div><button className={buttonClass} disabled={busy || !can(user,'STAFF_CREATE',selectedLocationId)} onClick={()=>open('create')}>Add Staff Member</button></header>
+    <header className="flex flex-wrap justify-between gap-4"><div><p className="eyebrow">People & operations</p><h2 className="page-title">Staff Directory</h2><p className="text-sm text-slate-400">Manage your team, work assignments and clock readiness.</p></div><button className={buttonClass} disabled={busy || !can(user,'STAFF_CREATE',selectedLocationId)} onClick={()=>open('create')}>Add Staff Member</button></header>
     {error && <p role="alert" className="rounded bg-red-950 p-3">{error}</p>}{notice && <p role="status" className="rounded bg-emerald-950 p-3">{notice}</p>}
-    <div className="flex flex-wrap gap-2">{filtered.map(e=><button key={e.id} disabled={busy} className="rounded border border-slate-700 p-3" onClick={()=>select(e.id)}>{e.employeeNumber} — {e.firstName} {e.lastName}</button>)}{!filtered.length && <p>No active staff in this property scope.</p>}</div>
-    {detail && <article className="space-y-3 rounded-xl border border-slate-700 p-4">
+    <div className="panel overflow-hidden"><div className="p-4 border-b border-slate-800 flex flex-wrap gap-3 justify-between items-center"><label className="text-sm text-slate-400">Search staff<input aria-label="Search staff" className={inputClass} placeholder="Name or staff number" value={search} onChange={e=>setSearch(e.target.value)}/></label><span className="text-sm text-slate-400">{filtered.length} staff in view</span></div><div className="overflow-x-auto"><table className="data-table"><thead><tr><th>Staff member</th><th>Staff number</th><th>Account status</th><th>Management</th></tr></thead><tbody>{filtered.map(e=><tr key={e.id} className={selectedId===e.id?'bg-blue-500/10':''}><td className="font-semibold text-white">{e.firstName} {e.lastName}</td><td className="font-mono">{e.employeeNumber}</td><td><span className="status-badge">{e.status}</span></td><td><button aria-expanded={selectedId===e.id} aria-controls="staff-detail" disabled={busy} className="text-blue-300 hover:text-white font-semibold" onClick={()=>toggle(e.id)}>{selectedId===e.id?'Close details ↑':'Manage staff ↓'}</button></td></tr>)}</tbody></table></div>{!filtered.length && <p className="p-6 text-slate-400">No staff match this branch and search.</p>}</div>
+    {selectedId && !detail && <p role="status">Loading staff details…</p>}
+    {detail && <article id="staff-detail" className="space-y-4 panel p-5">
+      <button className="float-right text-sm text-blue-300" disabled={busy} onClick={()=>toggle(selectedId)}>Close details ✕</button>
       <h3 className="text-lg font-bold">{detail.employeeNumber} — {detail.firstName} {detail.lastName}</h3><p>Account: {detail.status}</p>
       {detail.readiness.some((r:any)=>r.canEdit) && <IdentityEditor key={detail.id} detail={detail} onSaved={()=>{void select(detail.id);void refresh();}}/>}
       {!detail.readiness.length && <p>Assignment Required</p>}

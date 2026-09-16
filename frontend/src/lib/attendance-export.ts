@@ -1,0 +1,1 @@
+export type AttendanceEvent = { id: string; timestamp: string; punchType?: string; type?: string; location?: { name?: string; locationCode?: string }; user?: { firstName?: string; lastName?: string; employeeNumber?: string } };

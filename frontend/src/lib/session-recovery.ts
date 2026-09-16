@@ -20,5 +20,5 @@ export function recoverExpiredSession(requestToken: string | null) {
 }
 
 export function isPublicApiPath(path: string) {
-  return ['/auth/login', '/auth/refresh', '/attendance/kiosk-status', '/attendance/kiosk-clock'].includes(path.split('?')[0]);
+  return ['/auth/login', '/auth/refresh', '/attendance/kiosk-identify', '/attendance/kiosk-status', '/attendance/kiosk-clock'].includes(path.split('?')[0]);
 }

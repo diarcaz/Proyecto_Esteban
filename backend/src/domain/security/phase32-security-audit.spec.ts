@@ -231,6 +231,8 @@ export async function runPhase32SecurityAuditTests(): Promise<void> {
       },
     },
     $queryRaw: async () => [],
+    $executeRawUnsafe: async () => 1,
+    timesheet: { findMany: async () => [] },
     $transaction: async (fn: any) => await fn(mockPrisma),
   };
 
@@ -548,6 +550,8 @@ export async function runPhase32SecurityAuditTests(): Promise<void> {
     propertyOperationalConfig: { findUnique: async () => ({ maxShiftDurationMinutes: 960 }) },
     workShift: { findFirst: async () => null },
     $queryRaw: async () => [],
+    $executeRawUnsafe: async () => 1,
+    timesheet: { findMany: async () => [] },
     $transaction: async (fn: any) => await fn(mockPrismaAmbig),
   };
 
@@ -630,6 +634,8 @@ export async function runPhase32SecurityAuditTests(): Promise<void> {
       },
     },
     $queryRaw: async () => [],
+    $executeRawUnsafe: async () => 1,
+    timesheet: { findMany: async () => [] },
     $transaction: async (fn: any) => await fn(mockPrismaSingle),
   };
 
@@ -1007,6 +1013,8 @@ export async function runPhase32SecurityAuditTests(): Promise<void> {
     attendanceLog: { findMany: async () => [] },
     auditLog: { create: async () => ({}) },
     $queryRaw: async () => [],
+    $executeRawUnsafe: async () => 1,
+    timesheet: { findMany: async () => [] },
     $transaction: async (fn: any) => await fn(mockPrismaApprovalIntegrity),
   };
 

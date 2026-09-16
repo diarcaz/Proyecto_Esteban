@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { attendanceApi } from '@/lib/api-client';
+import { BranchClock } from '@/components/kiosk/branch-clock';
 import { formatPropertyTimestamp, InteractionGeneration, readTerminalConfig, TerminalConfig } from '@/lib/clock-context';
 
 type Step = 'IDLE' | 'VERIFYING' | 'ACTIONS' | 'RECORDING' | 'SUCCESS' | 'ERROR';
@@ -11,7 +12,6 @@ const labels: Record<string, string> = { CLOCK_IN: 'Clock In', LUNCH_START: 'Sta
 export default function ClockPage() {
   const [terminal, setTerminal] = useState<TerminalConfig | null>(null);
   const [step, setStep] = useState<Step>('IDLE');
-  const [employeeNumber, setEmployeeNumber] = useState('');
   const [pin, setPin] = useState('');
   const [status, setStatus] = useState<any>(null);
   const [confirmation, setConfirmation] = useState<any>(null);
@@ -25,7 +25,7 @@ export default function ClockPage() {
   const reset = useCallback(() => {
     interaction.current.next(); busy.current = false;
     clearTimeout(inactivity.current); clearTimeout(autoReset.current);
-    setPin(''); setEmployeeNumber(''); setStatus(null); setConfirmation(null); setError(''); setStep('IDLE');
+    setPin(''); setStatus(null); setConfirmation(null); setError(''); setStep('IDLE');
   }, []);
   const touch = useCallback(() => {
     clearTimeout(inactivity.current);
@@ -42,12 +42,12 @@ export default function ClockPage() {
 
   async function verify(e: React.FormEvent) {
     e.preventDefault();
-    if (!terminal || !employeeNumber.trim() || !/^\d{6}$/.test(pin) || busy.current) return;
+    if (!terminal || !/^\d{6}$/.test(pin) || busy.current) return;
     busy.current = true; touch();
     const generation = interaction.current.next();
     setStep('VERIFYING');
     try {
-      const data = await attendanceApi.kioskStatus({ employee_number: employeeNumber.trim(), pin_code: pin, property_id: terminal.propertyId });
+      const data = await attendanceApi.kioskIdentify({ pin_code: pin, property_id: terminal.propertyId });
       if (!interaction.current.isCurrent(generation)) return;
       setStatus(data); setStep('ACTIONS'); touch();
     } catch (e: any) {
@@ -77,48 +77,45 @@ export default function ClockPage() {
     if (!timezone) return 'Time unavailable';
     try { return formatPropertyTimestamp(timestamp, timezone); } catch { return 'Time unavailable'; }
   }
-  return <main className="min-h-screen bg-slate-50 p-6 sm:p-10 text-slate-900">
-    <header className="max-w-5xl mx-auto flex justify-between items-center bg-white rounded-3xl p-5 shadow-sm">
-      <div><h1 className="text-2xl font-black">NexuStaff Touch Clock</h1><p>{status?.location?.name || terminal?.propertyName || 'Terminal not configured'}</p></div>
-      <Link href="/clock/setup" className="rounded-xl border px-4 py-3">Terminal setup</Link>
+  return <main className="min-h-screen bg-slate-950 p-4 sm:p-8 text-slate-100">
+    <header className="max-w-6xl mx-auto flex flex-wrap gap-4 justify-between items-center border-b border-slate-800 pb-5">
+      <div><p className="text-blue-400 text-xs font-bold tracking-widest uppercase">NexuStaff · Time & Attendance</p><h1 className="text-xl font-bold mt-1">{status?.location?.name || terminal?.propertyName || 'Terminal not configured'}</h1><p className="text-xs text-slate-400 mt-1">{terminal?.locationCode} {terminal?.timezone && `· ${terminal.timezone}`}</p></div>
+      <Link href="/clock/setup" className="rounded-xl border border-slate-700 px-4 py-3 text-sm">Terminal setup</Link>
     </header>
-    <div className="max-w-xl mx-auto mt-10 space-y-6 bg-white rounded-3xl p-8 shadow-xl">
-      {!terminal ? <p>An authorized administrator must <Link href="/clock/setup" className="text-blue-700 underline">configure this terminal</Link> before clocking.</p> : <>
-        <p className="text-center font-mono text-xl">{format(now)}</p>
+    <div className="max-w-6xl mx-auto mt-8 grid lg:grid-cols-2 gap-8 items-center">
+    <section className="text-center py-8"><BranchClock now={now} timezone={terminal?.timezone}/><h2 className="text-2xl font-bold mt-8">Your shift starts here.</h2><p className="text-slate-400 mt-2">Enter your PIN, confirm your name, and record your punch.</p></section>
+    <div className="space-y-6 rounded-3xl border border-slate-700 bg-slate-900 p-6 sm:p-8 shadow-xl">
+      {!terminal ? <p>An authorized administrator must <Link href="/clock/setup" className="text-blue-300 underline">configure this terminal</Link> before clocking.</p> : <>
+        <p className="text-blue-400 uppercase tracking-widest text-xs font-bold">Staff touch clock</p>
         {step === 'IDLE' && <form onSubmit={verify} className="space-y-5">
-          <label className="block font-bold">Staff number
-            <input aria-label="Staff number" name="clock-staff-number" type="text" autoComplete="off" autoCapitalize="none" spellCheck={false} readOnly onFocus={e => { e.currentTarget.readOnly = false; }} data-lpignore="true" value={employeeNumber}
-              placeholder="EMP-1001" onChange={e => { setEmployeeNumber(e.target.value); touch(); }}
-              className="w-full border-2 rounded-xl p-4 mt-2 text-xl" />
-          </label>
           <label className="block font-bold">6-digit PIN
             <input aria-label="6-digit PIN" name="clock-staff-pin" readOnly onFocus={e => { e.currentTarget.readOnly = false; }} data-lpignore="true" type="password" inputMode="numeric" autoComplete="off" maxLength={6} value={pin}
               onChange={e => { setPin(e.target.value.replace(/\D/g, '').slice(0, 6)); touch(); }}
-              className="w-full border-2 rounded-xl p-4 mt-2 text-xl tracking-widest" />
+              className="w-full border border-slate-600 bg-slate-950 rounded-xl p-4 mt-2 text-3xl text-center tracking-[0.5em]" />
           </label>
           <div className="grid grid-cols-3 gap-3">{['1','2','3','4','5','6','7','8','9','Clear','0','Delete'].map(key =>
-            <button key={key} type="button" className="h-16 bg-slate-100 rounded-xl text-xl font-bold" onClick={() => {
+            <button key={key} type="button" className="h-16 bg-slate-800 border border-slate-700 hover:bg-slate-700 active:bg-blue-700 rounded-xl text-xl font-bold" onClick={() => {
               touch(); setPin(value => key === 'Clear' ? '' : key === 'Delete' ? value.slice(0, -1) : (value + key).slice(0, 6));
             }}>{key}</button>)}</div>
-          <button disabled={!employeeNumber.trim() || !/^\d{6}$/.test(pin)} className="w-full bg-blue-700 text-white rounded-xl p-4 font-bold disabled:opacity-40">Continue to Punch</button>
+          <button disabled={!/^\d{6}$/.test(pin)} className="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-xl p-4 font-bold disabled:opacity-40">Continue to Punch</button>
         </form>}
         {(step === 'VERIFYING' || step === 'RECORDING') && <p role="status">{step === 'VERIFYING' ? 'Verifying credentials…' : 'Recording punch…'}</p>}
         {step === 'ACTIONS' && status && <section className="space-y-5">
           <h2 className="text-2xl font-bold">{status.employee.displayName}</h2>
-          <p>{status.shiftState.currentStatus.replaceAll('_', ' ')}</p>
+          <p className="text-blue-300">{status.shiftState.currentStatus.replaceAll('_', ' ')}</p><p className="text-slate-400">{status.employee.department?.name} {status.employee.position?.title && `· ${status.employee.position.title}`}</p>
           {status.shiftState.activeShift && <p>Started: {format(status.shiftState.activeShift.clockInTimestamp)}</p>}
           {status.shiftState.activeShift?.isOverdue && <p>Your previous shift needs administrator review. You may start a new shift here.</p>}
           <div className="grid grid-cols-2 gap-3">{status.shiftState.allowedActions.filter((action: string) => labels[action]).map((action: string) =>
             <button key={action} onClick={() => punch(action)} className="rounded-xl bg-blue-700 text-white p-5 font-bold">{labels[action]}</button>)}</div>
         </section>}
         {step === 'SUCCESS' && confirmation && <section role="status" className="text-center space-y-4">
-          <h2 className="text-2xl font-bold text-green-700">Punch confirmed</h2>
+          <h2 className="text-2xl font-bold text-emerald-400">Punch confirmed</h2>
           <p>{confirmation.employee.displayName}: {labels[confirmation.punchType]}</p>
           <p>{format(confirmation.timestamp)}</p><p>Returning to the clock in 5 seconds.</p>
         </section>}
-        {step === 'ERROR' && <p role="alert" className="text-red-700">{error}</p>}
-        {step !== 'IDLE' && <button onClick={reset} className="w-full p-4 rounded-xl bg-slate-100">{step === 'SUCCESS' ? 'Done' : 'Cancel / Reset'}</button>}
+        {step === 'ERROR' && <p role="alert" className="text-rose-300">{error}</p>}
+        {step !== 'IDLE' && <button onClick={reset} className="w-full p-4 rounded-xl border border-slate-600 bg-slate-800">{step === 'SUCCESS' ? 'Done' : 'Not you? Clear PIN'}</button>}
       </>}
-    </div>
+    </div></div>
   </main>;
 }

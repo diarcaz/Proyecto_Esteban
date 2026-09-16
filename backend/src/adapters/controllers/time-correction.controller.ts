@@ -1,3 +1,4 @@
+import { SetMetadata } from '@nestjs/common';
 import { HttpException, Controller, Get, Post, Patch, Body, Param, Query, Req, UseGuards, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { TimeCorrectionService } from '../../application/services/time-correction.service';
@@ -48,6 +49,7 @@ export class TimeCorrectionController {
 
   @Patch(':id/approve')
   @RequirePermissions(Permission.TIME_APPROVE)
+  @SetMetadata('APPROVAL_TARGET', 'correction')
   @ApiOperation({ summary: 'Approve a pending time correction request (requires TIME_APPROVE permission)' })
   async approve(@Param('id') id: string, @Body() dto: ReviewTimeCorrectionDto, @Req() req: any) {
     try {
@@ -60,6 +62,7 @@ export class TimeCorrectionController {
 
   @Patch(':id/reject')
   @RequirePermissions(Permission.TIME_APPROVE)
+  @SetMetadata('APPROVAL_TARGET', 'correction')
   @ApiOperation({ summary: 'Reject a pending time correction request (requires TIME_APPROVE permission)' })
   async reject(@Param('id') id: string, @Body() dto: ReviewTimeCorrectionDto, @Req() req: any) {
     try {

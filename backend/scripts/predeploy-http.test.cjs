@@ -1,0 +1,9 @@
+require('./local-test-env.cjs').localTestEnvironment();const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('fs'),path=require('path');
+const fixture=JSON.parse(fs.readFileSync(path.resolve(__dirname,'../.local-browser-fixture.json'))),base='http://localhost:3101/api/v1';
+async function login(role){const {JwtService}=require('@nestjs/jwt');const index=['SUPER_ADMIN','LOCATION_ADMIN','SUPERVISOR','WORKER'].indexOf(role);return new JwtService({secret:process.env.JWT_SECRET}).sign({sub:fixture.userIds[index],role,tokenId:'local-http-test'});}
+for(const role of ['SUPER_ADMIN','LOCATION_ADMIN','SUPERVISOR'])test('live HTTP export and period tenant scope '+role,async()=>{const token=await login(role),headers={Authorization:'Bearer '+token};assert.ok(token);let r=await fetch(base+'/locations',{headers});assert.equal(r.status,200);const locations=await r.json();assert.equal(locations.length,role==='SUPER_ADMIN'?2:1);
+ const query='period=weekly&start_date=2026-01-05';r=await fetch(base+'/reports/attendance/detail.csv?'+query,{headers});assert.equal(r.status,200);const csv=await r.text();assert.match(csv,/North Worker/);if(role==='SUPER_ADMIN')assert.match(csv,/South Worker/);else assert.doesNotMatch(csv,/South Worker/);
+ r=await fetch(base+'/reports/attendance/summary.csv?'+query+'&location_id='+fixture.properties[1].id,{headers});assert.equal(r.status,role==='SUPER_ADMIN'?200:403);
+ r=await fetch(base+'/period-approvals?location_id='+fixture.properties[1].id,{headers});assert.equal(r.status,role==='SUPER_ADMIN'?200:403);
+});
+test('authenticated WORKER is denied report and approval APIs',async()=>{const token=await login('WORKER');for(const route of ['/reports/attendance/detail.csv?period=weekly&start_date=2026-01-05','/period-approvals?location_id='+fixture.properties[0].id]){const response=await fetch(base+route,{headers:{Authorization:'Bearer '+token}});assert.equal(response.status,403);}});

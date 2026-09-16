@@ -23,3 +23,6 @@ build/
 prisma/migrations/dev.db
 *.db
 
+
+backend/.local-integration-secrets.json
+backend/.local-browser-fixture.json

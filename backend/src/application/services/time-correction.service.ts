@@ -1,3 +1,4 @@
+import { lockPeriodReview, invalidatePeriodReviews } from './period-review-state';
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '@infrastructure/persistence/prisma/prisma.service';
 import { AuthorizationService } from '@domain/security/authorization.service';
@@ -180,6 +181,7 @@ export class TimeCorrectionService {
    * - No hardcoded 480-minute overtime threshold.
    */
   async approveCorrectionRequest(id: string, dto: ReviewTimeCorrectionDto, currentUser: any) {
+    if (!currentUser || !['SUPER_ADMIN','OWNER','ADMIN','MANAGER','LOCATION_ADMIN','SUPERVISOR'].includes(currentUser.role)) throw new ForbiddenException('Administrator approval required.');
     const request = await this.prisma.timeCorrectionRequest.findUnique({
       where: { id },
       include: { property: { select: { companyId: true } }, workShift: true },
@@ -189,7 +191,7 @@ export class TimeCorrectionService {
     // Enforce Company and Property isolation + TIME_APPROVE permission
     this.authzService.assertCompanyAccess(currentUser, request.property.companyId);
     this.authzService.assertPropertyAccess(currentUser, request.propertyId, request.property.companyId);
-    this.authzService.assertPermission(currentUser, Permission.TIME_APPROVE, request.propertyId);
+    this.authzService.assertPermission(currentUser, Permission.TIME_APPROVE, request.propertyId, request.property.companyId);
 
     if (request.status !== 'PENDING') {
       throw new BadRequestException(`Time correction request ${id} has already been reviewed (status: ${request.status}). Cannot approve twice.`);
@@ -198,6 +200,7 @@ export class TimeCorrectionService {
     const now = new Date();
 
     return await this.prisma.$transaction(async (tx) => {
+      await lockPeriodReview(tx);
       // Phase 3.2 Targeted Review (Item 4): Re-verify fresh DB values inside transaction BEFORE status transition
       let shift: any = null;
       let log: any = null;
@@ -235,6 +238,17 @@ export class TimeCorrectionService {
           );
         }
       }
+
+      if (!shift && log?.workShiftId) {
+        shift = await tx.workShift.findUnique({ where: { id: log.workShiftId } });
+        if (!shift || shift.locationId !== request.propertyId || shift.userId !== request.userId) {
+          throw new BadRequestException('Correction attendance must resolve to the same employee and property WorkShift.');
+        }
+      }
+      if (shift && log?.workShiftId && shift.id !== log.workShiftId) {
+        throw new BadRequestException('Correction attendance and WorkShift do not match.');
+      }
+      if (!shift) throw new BadRequestException('Reconcile attendance with a canonical WorkShift before approving a correction.');
 
       if (shift && log && shift.userId !== log.userId) {
         throw new BadRequestException(
@@ -363,6 +377,7 @@ export class TimeCorrectionService {
           });
         }
 
+      await invalidatePeriodReviews(tx, request.userId, request.propertyId, currentUser.id);
       await tx.auditLog.create({
         data: {
           actorId: currentUser.id,
@@ -386,6 +401,7 @@ export class TimeCorrectionService {
    * Request status is set to REJECTED. Effective WorkShift values remain unchanged.
    */
   async rejectCorrectionRequest(id: string, dto: ReviewTimeCorrectionDto, currentUser: any) {
+    if (!currentUser || !['SUPER_ADMIN','OWNER','ADMIN','MANAGER','LOCATION_ADMIN','SUPERVISOR'].includes(currentUser.role)) throw new ForbiddenException('Administrator approval required.');
     const request = await this.prisma.timeCorrectionRequest.findUnique({
       where: { id },
       include: { property: { select: { companyId: true } } },
@@ -394,7 +410,7 @@ export class TimeCorrectionService {
 
     this.authzService.assertCompanyAccess(currentUser, request.property.companyId);
     this.authzService.assertPropertyAccess(currentUser, request.propertyId, request.property.companyId);
-    this.authzService.assertPermission(currentUser, Permission.TIME_APPROVE, request.propertyId);
+    this.authzService.assertPermission(currentUser, Permission.TIME_APPROVE, request.propertyId, request.property.companyId);
 
     if (request.status !== 'PENDING') {
       throw new BadRequestException(`Time correction request ${id} has already been reviewed (status: ${request.status}).`);

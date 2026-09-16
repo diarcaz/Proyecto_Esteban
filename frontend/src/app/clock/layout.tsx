@@ -7,7 +7,7 @@ export const metadata = {
 
 export default function ClockLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen w-full bg-slate-100 text-slate-900 font-sans antialiased select-none flex flex-col">
+    <div className="min-h-screen w-full bg-slate-950 text-slate-100 font-sans antialiased select-none flex flex-col">
       {children}
     </div>
   );

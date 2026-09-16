@@ -51,6 +51,7 @@ services:
       REDIS_PORT: 6379
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       PIN_ENCRYPTION_KEY: ${PIN_ENCRYPTION_KEY:?PIN_ENCRYPTION_KEY is required}
+      PIN_LOOKUP_KEY: ${PIN_LOOKUP_KEY:?PIN_LOOKUP_KEY is required}
       NODE_ENV: development
       CORS_ORIGIN: http://localhost:3000
       JWT_EXPIRATION: "1d"
