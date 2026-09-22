@@ -9,9 +9,9 @@ const inputClass = 'w-full rounded-lg border border-slate-700 bg-slate-950 p-2 t
 const buttonClass = 'rounded-lg bg-blue-600 px-3 py-2 text-white disabled:opacity-40';
 function localNow() { const now = new Date(); return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0,16); }
 function IdentityEditor({ detail, onSaved }: { detail: any; onSaved: () => void }) {
-  const [firstName,setFirstName]=useState(detail.firstName),[lastName,setLastName]=useState(detail.lastName),[error,setError]=useState(''),[saving,setSaving]=useState(false);
-  return <form className="flex flex-wrap gap-2" onSubmit={async e=>{e.preventDefault();setSaving(true);setError('');try{await staffApi.update(detail.id,{firstName,lastName});onSaved();}catch{setError('Staff changes were not saved.');}finally{setSaving(false);}}}>
-    <label>First name<input required className={inputClass} autoComplete="section-staff given-name" name="staff-first-name" value={firstName} onChange={e=>setFirstName(e.target.value)}/></label><label>Last name<input required className={inputClass} autoComplete="section-staff family-name" name="staff-last-name" value={lastName} onChange={e=>setLastName(e.target.value)}/></label><button disabled={saving} className={buttonClass}>Save staff details</button>{error&&<p role="alert">{error}</p>}
+  const [firstName,setFirstName]=useState(detail.firstName),[lastName,setLastName]=useState(detail.lastName),[error,setError]=useState(''),[saving,setSaving]=useState(false),[status,setStatus]=useState(detail.status);
+  return <form className="flex flex-wrap gap-2" onSubmit={async e=>{e.preventDefault();setSaving(true);setError('');try{await staffApi.update(detail.id,{firstName,lastName,status});onSaved();}catch{setError('Staff changes were not saved.');}finally{setSaving(false);}}}>
+    <label>First name<input required className={inputClass} autoComplete="section-staff given-name" name="staff-first-name" value={firstName} onChange={e=>setFirstName(e.target.value)}/></label><label>Last name<input required className={inputClass} autoComplete="section-staff family-name" name="staff-last-name" value={lastName} onChange={e=>setLastName(e.target.value)}/></label><label>Account status<select aria-label="Staff account status" className={inputClass} value={status} onChange={e=>setStatus(e.target.value)}><option value="ACTIVE">Active</option><option value="TERMINATED">Inactive</option></select></label><button disabled={saving} className={buttonClass}>Save staff details</button>{status==='TERMINATED'&&<p>Saving blocks Clock access. Close or correct open shifts first. Historical attendance is preserved.</p>}{error&&<p role="alert">{error}</p>}
   </form>;
 }
 const emptyAssignment = () => ({ propertyId: '', departmentId: '', positionId: '', effectiveFrom: localNow(), effectiveUntil: '', active: true });
@@ -31,13 +31,13 @@ export default function EmployeesPage() {
   const [loading, setLoading] = useState(true);
   useEffect(() => { generation.current++; setDetail(null); setSelectedId(''); setPin(null); setNewPin(''); setMode(null); }, [selectedLocationId]);
   async function refresh() {
-    const data = await staffApi.list();
+    const data = await staffApi.list(true);
     if (!Array.isArray(data)) throw new Error('Unable to load staff.');
     setEmployees(data.filter(e => e.role === 'WORKER'));
   }
   useEffect(() => {
     let active = true; setLoading(true); setError(''); setEmployees([]); setDetail(null); setSelectedId(''); setPin(null); setMode(null);
-    Promise.all([staffApi.list(), locationsApi.list()]).then(([staff, locations]) => {
+    Promise.all([staffApi.list(true), locationsApi.list()]).then(([staff, locations]) => {
       if (active) { setEmployees(staff.filter((e:any) => e.role === 'WORKER')); setProperties(locations); }
     }).catch(() => { if (active) setError('Unable to load Staff and branches. Please refresh to retry.'); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; generation.current++; };

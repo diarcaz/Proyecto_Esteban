@@ -1,5 +1,5 @@
 import { PropertyRead } from '@adapters/decorators/property-read.decorator';
-import { HttpException, Controller, Get, Post, Patch, Delete, Body, Param, BadRequestException, NotFoundException, ForbiddenException, Req, UseGuards } from '@nestjs/common';
+import { SetMetadata, HttpException, Controller, Get, Post, Patch, Delete, Body, Param, BadRequestException, NotFoundException, ForbiddenException, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { LocationService } from '../../application/services/location.service';
 import { Roles } from '@adapters/decorators/roles-and-locations.decorator';
@@ -31,6 +31,7 @@ export class LocationController {
   }
 
   @Post()
+  @SetMetadata('SERVER_PROPERTY_SCOPE', true)
   @Roles(UserRole.SUPER_ADMIN, UserRole.OWNER, UserRole.ADMIN)
   @RequirePermissions(Permission.PROPERTY_MANAGE)
   @ApiOperation({ summary: 'Create new branch location / property' })
@@ -44,6 +45,7 @@ export class LocationController {
   }
 
   @Patch(':id')
+  @SetMetadata('SERVER_PROPERTY_SCOPE', true)
   @Roles(UserRole.SUPER_ADMIN, UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.LOCATION_ADMIN)
   @RequirePermissions(Permission.PROPERTY_MANAGE)
   @ApiOperation({ summary: 'Update branch location / property' })

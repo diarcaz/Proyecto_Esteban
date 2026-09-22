@@ -7,6 +7,7 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh.dto';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
+import { credentialVersion, matchesCredentialVersion } from './credential-version';
 
 @Injectable()
 export class AuthService {
@@ -50,7 +51,7 @@ export class AuthService {
     await this.redisService.resetFailedAttempts(lockKey);
 
     const tokenId = uuidv4();
-    const tokens = await this.generateTokens(user.id, user.email, user.role, tokenId);
+    const tokens = await this.generateTokens(user, tokenId);
 
     await this.redisService.setRefreshToken(user.id, tokenId, tokens.refreshToken, 7 * 24 * 60 * 60);
 
@@ -78,16 +79,22 @@ export class AuthService {
         throw new Error('FATAL SECURITY ERROR: JWT_SECRET environment variable is missing or empty.');
       }
       const decoded = this.jwtService.verify(dto.refreshToken, { secret });
+      const user = await this.prisma.user.findUnique({ where: { id: decoded.sub } });
+      if (decoded.type !== 'refresh' || !user || user.status !== 'ACTIVE' || !matchesCredentialVersion(decoded.credentialVersion, secret, user)) {
+        throw new UnauthorizedException('Session is no longer valid');
+      }
 
       const savedToken = await this.redisService.getRefreshToken(decoded.sub, decoded.tokenId);
       if (!savedToken || savedToken !== dto.refreshToken) {
         throw new UnauthorizedException('Refresh token is invalid or has been revoked');
       }
 
-      await this.redisService.revokeRefreshToken(decoded.sub, decoded.tokenId);
+      if (!await this.redisService.consumeRefreshToken(decoded.sub, decoded.tokenId, dto.refreshToken)) {
+        throw new UnauthorizedException('Refresh token already used');
+      }
 
       const newTokId = uuidv4();
-      const tokens = await this.generateTokens(decoded.sub, decoded.email, decoded.role, newTokId);
+      const tokens = await this.generateTokens(user, newTokId);
       await this.redisService.setRefreshToken(decoded.sub, newTokId, tokens.refreshToken, 7 * 24 * 60 * 60);
 
       return tokens;
@@ -102,11 +109,13 @@ export class AuthService {
     return { success: true, message: 'Logged out successfully' };
   }
 
-  private async generateTokens(userId: string, email: string, role: string, tokenId: string) {
-    const payload = { sub: userId, email, role, tokenId };
+  private async generateTokens(user: { id: string; email: string; role: string; passwordHash: string }, tokenId: string) {
+    const secret = this.configService.get<string>('JWT_SECRET');
+    if (!secret) throw new Error('FATAL SECURITY ERROR: JWT_SECRET required');
+    const payload = { sub: user.id, email: user.email, role: user.role, tokenId, credentialVersion: credentialVersion(secret, user) };
 
-    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
-    const refreshToken = this.jwtService.sign(payload, { expiresIn: '7d' });
+    const accessToken = this.jwtService.sign({ ...payload, type: 'access' }, { expiresIn: '15m' });
+    const refreshToken = this.jwtService.sign({ ...payload, type: 'refresh' }, { expiresIn: '7d' });
 
     return { accessToken, refreshToken };
   }

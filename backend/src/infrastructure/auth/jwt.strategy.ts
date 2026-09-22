@@ -3,12 +3,15 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../persistence/prisma/prisma.service';
+import { matchesCredentialVersion } from './credential-version';
 
 export interface JwtPayload {
   sub: string;
   email: string;
   role: string;
   tokenId: string;
+  type: string;
+  credentialVersion: string;
 }
 
 @Injectable()
@@ -56,6 +59,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     if (!user || user.status !== 'ACTIVE') {
       throw new UnauthorizedException('Account inactive or user not found');
+    }
+    if (payload.type !== 'access' || !matchesCredentialVersion(payload.credentialVersion, this.configService.get<string>('JWT_SECRET')!, user)) {
+      throw new UnauthorizedException('Session expired. Sign in again.');
     }
 
     const legacyLocationIds = (user.assignments || []).map((a: any) => a.locationId);

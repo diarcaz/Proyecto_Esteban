@@ -51,6 +51,11 @@ export class LocationService {
     return value.trim();
   }
 
+  private validateMaxShift(value: unknown): number {
+    if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > 2147483647) throw new BadRequestException('Maximum shift duration must be a positive whole number of minutes.');
+    return value as number;
+  }
+
   async create(dto: any, currentUser?: any) {
     const companyId = currentUser && currentUser.role !== 'SUPER_ADMIN' ? currentUser.companyId : dto.companyId || currentUser?.companyId;
 
@@ -58,6 +63,8 @@ export class LocationService {
 
     if (currentUser) {
       this.authzService.assertCompanyAccess(currentUser, companyId);
+      if (dto.companyId && dto.companyId !== companyId) throw new ForbiddenException('Company context mismatch.');
+      if (!this.authzService.hasCompanyPermission(currentUser, Permission.PROPERTY_MANAGE, companyId)) throw new ForbiddenException('Company branch-management permission required.');
     }
 
     const location = await this.prisma.location.create({
@@ -72,7 +79,7 @@ export class LocationService {
             weekStartDay: dto.weekStartDay || 'MONDAY',
             payrollFrequency: dto.payrollFrequency || 'WEEKLY',
             invoiceFrequency: dto.invoiceFrequency || 'WEEKLY',
-            maxShiftDurationMinutes: dto.maxShiftDurationMinutes || 960,
+            maxShiftDurationMinutes: this.validateMaxShift(dto.maxShiftDurationMinutes ?? 960),
           },
         },
       },
@@ -94,6 +101,7 @@ export class LocationService {
     if (currentUser) {
       this.authzService.assertCompanyAccess(currentUser, loc.companyId);
       this.authzService.assertPropertyAccess(currentUser, loc.id, loc.companyId);
+      this.authzService.assertPermission(currentUser, Permission.PROPERTY_MANAGE, loc.id, loc.companyId);
     }
 
     return this.prisma.location.update({
@@ -106,11 +114,11 @@ export class LocationService {
           upsert: {
             create: {
               weekStartDay: dto.weekStartDay || 'MONDAY',
-              maxShiftDurationMinutes: dto.maxShiftDurationMinutes || 960,
+              maxShiftDurationMinutes: this.validateMaxShift(dto.maxShiftDurationMinutes ?? 960),
             },
             update: {
               weekStartDay: dto.weekStartDay ?? undefined,
-              maxShiftDurationMinutes: dto.maxShiftDurationMinutes ?? undefined,
+              maxShiftDurationMinutes: dto.maxShiftDurationMinutes === undefined ? undefined : this.validateMaxShift(dto.maxShiftDurationMinutes),
             },
           },
         },
@@ -130,7 +138,6 @@ export class LocationService {
       this.authzService.assertPropertyAccess(currentUser, loc.id, loc.companyId);
     }
 
-    await this.prisma.location.delete({ where: { id } });
-    return { message: `Location ${loc.name} deleted successfully.` };
+    throw new ForbiddenException('Branch deletion is unavailable. Historical attendance and assignments must be preserved.');
   }
 }

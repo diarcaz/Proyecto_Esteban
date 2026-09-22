@@ -40,11 +40,11 @@ export async function runPhase32SecurityAuditTests(): Promise<void> {
     role: 'MANAGER',
     companyId: compAlpha,
     assignedLocationIds: [propA],
-    permissions: [Permission.TIME_VIEW, Permission.TIME_APPROVE, Permission.VIEW_PAY_RATE],
+    permissions: [Permission.TIME_EDIT, Permission.TIME_VIEW, Permission.TIME_APPROVE, Permission.VIEW_PAY_RATE],
     propertyAccess: [
       {
         propertyId: propA,
-        permissions: [Permission.TIME_VIEW, Permission.TIME_APPROVE, Permission.VIEW_PAY_RATE],
+        permissions: [Permission.TIME_EDIT, Permission.TIME_VIEW, Permission.TIME_APPROVE, Permission.VIEW_PAY_RATE],
       },
     ],
   };
@@ -55,11 +55,11 @@ export async function runPhase32SecurityAuditTests(): Promise<void> {
     role: 'SUPERVISOR',
     companyId: compAlpha,
     assignedLocationIds: [propA],
-    permissions: [Permission.TIME_VIEW, Permission.TIME_APPROVE],
+    permissions: [Permission.TIME_EDIT, Permission.TIME_VIEW, Permission.TIME_APPROVE],
     propertyAccess: [
       {
         propertyId: propA,
-        permissions: [Permission.TIME_VIEW, Permission.TIME_APPROVE],
+        permissions: [Permission.TIME_EDIT, Permission.TIME_VIEW, Permission.TIME_APPROVE],
       },
     ],
   };

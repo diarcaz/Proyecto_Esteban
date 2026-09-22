@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Param, Body, Query, Req, UseGuards } from '@nestjs/common';
-import { IsUUID, IsIn, IsString, Matches, IsInt, Min, MaxLength, IsArray } from 'class-validator';
+import { SetMetadata, Controller, Get, Post, Param, Body, Query, Req, UseGuards } from '@nestjs/common';
+import { IsBoolean, IsUUID, IsIn, IsString, Matches, IsInt, Min, MaxLength, IsArray } from 'class-validator';
+class ApprovalPolicyDto { @IsBoolean() requireApproval!: boolean; }
 import { PeriodApprovalService } from '@application/services/period-approval.service';
 import { TenantGuard } from '../guards/tenant.guard';
 import { Roles } from '../decorators/roles-and-locations.decorator';
@@ -32,10 +33,15 @@ class WorkflowDto {
     steps!: any[];
 }
 @Controller('api/v1/period-approvals')
+@SetMetadata('SERVER_PROPERTY_SCOPE', true)
 @UseGuards(TenantGuard)
 @Roles(UserRole.SUPER_ADMIN, UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.LOCATION_ADMIN, UserRole.SUPERVISOR)
 export class PeriodApprovalController {
     constructor(private readonly service: PeriodApprovalService) { }
+    @Post('policy/:locationId')
+    policy(@Param('locationId') id: string, @Body() body: ApprovalPolicyDto, @Req() req: any) {
+        return this.service.setApprovalPolicy(id, body.requireApproval, req.user);
+    }
     @Get()
     list(
     @Query('location_id')

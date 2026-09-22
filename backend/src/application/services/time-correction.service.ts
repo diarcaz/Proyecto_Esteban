@@ -61,6 +61,7 @@ export class TimeCorrectionService {
    * - WorkShift.userId === target employee
    */
   async createCorrectionRequest(dto: CreateTimeCorrectionDto, currentUser: any) {
+    if (!currentUser || !['SUPER_ADMIN','OWNER','ADMIN','MANAGER','LOCATION_ADMIN','SUPERVISOR'].includes(currentUser.role)) throw new ForbiddenException('Administrative correction access required.');
     const propertyId = dto.location_id;
 
     // Phase 3.2: Resolve property server-side to establish companyId
@@ -72,7 +73,8 @@ export class TimeCorrectionService {
 
     // Phase 3.2: Enforce tenant isolation with server-resolved companyId
     this.authzService.assertCompanyAccess(currentUser, property.companyId);
-    this.authzService.assertPropertyAccess(currentUser, propertyId, property.companyId);
+      this.authzService.assertPropertyAccess(currentUser, propertyId, property.companyId);
+      this.authzService.assertPermission(currentUser, Permission.TIME_EDIT, propertyId, property.companyId);
 
     let originalTimestamp: Date | null = null;
     let targetUserId = currentUser.id;
@@ -453,6 +455,7 @@ export class TimeCorrectionService {
    * Uses Prisma select to avoid fetching sensitive fields when possible.
    */
   async getCorrectionRequests(currentUser: any, query: any) {
+    if (!currentUser || !['SUPER_ADMIN','OWNER','ADMIN','MANAGER','LOCATION_ADMIN','SUPERVISOR'].includes(currentUser.role)) throw new ForbiddenException('Administrative correction access required.');
     const where: any = {};
 
     if (currentUser && currentUser.role !== 'SUPER_ADMIN') {
@@ -468,11 +471,12 @@ export class TimeCorrectionService {
       });
       if (prop) {
         this.authzService.assertPropertyAccess(currentUser, targetPropertyId, prop.companyId);
+        this.authzService.assertPermission(currentUser, Permission.TIME_VIEW, targetPropertyId, prop.companyId);
       }
       where.propertyId = targetPropertyId;
     } else if (currentUser && currentUser.role !== 'SUPER_ADMIN' && currentUser.role !== 'OWNER') {
-      const assigned = currentUser.assignedLocationIds || [];
-      where.propertyId = { in: assigned.length > 0 ? assigned : ['none'] };
+      const properties = await this.prisma.location.findMany({ where: { companyId: currentUser.companyId }, select: { id: true, companyId: true } });
+      where.propertyId = { in: properties.filter(p => this.authzService.canAccessProperty(currentUser,p.id,p.companyId) && this.authzService.hasPermission(currentUser,Permission.TIME_VIEW,p.id,p.companyId)).map(p=>p.id) };
     }
 
     if (query.status) where.status = query.status;
@@ -572,6 +576,7 @@ export class TimeCorrectionService {
   }
 
   async getCorrectionRequestById(id: string, currentUser: any): Promise<any> {
+    if (!currentUser || !['SUPER_ADMIN','OWNER','ADMIN','MANAGER','LOCATION_ADMIN','SUPERVISOR'].includes(currentUser.role)) throw new ForbiddenException('Administrative correction access required.');
     const request = await this.prisma.timeCorrectionRequest.findUnique({
       where: { id },
       include: {
@@ -585,7 +590,8 @@ export class TimeCorrectionService {
 
     if (currentUser) {
       this.authzService.assertCompanyAccess(currentUser, request.property.companyId);
-      this.authzService.assertPropertyAccess(currentUser, request.propertyId, request.property.companyId);
+        this.authzService.assertPropertyAccess(currentUser, request.propertyId, request.property.companyId);
+        this.authzService.assertPermission(currentUser, Permission.TIME_VIEW, request.propertyId, request.property.companyId);
     }
 
     // Item 3: Build permission-specific Prisma select for single request workShift query

@@ -8,6 +8,28 @@ const ADMIN_ROLES = ['SUPER_ADMIN', 'OWNER', 'ADMIN', 'MANAGER', 'LOCATION_ADMIN
 @Injectable()
 export class PeriodApprovalService {
     constructor(private readonly prisma: PrismaService, private readonly authz: AuthorizationService) { }
+    private async required(db: any, locationId: string): Promise<boolean> {
+        return (await db.propertyOperationalConfig.findUnique({ where: { locationId } }))?.requireApproval !== false;
+    }
+    async setApprovalPolicy(locationId: string, required: boolean, actor: any) {
+        if (typeof required !== 'boolean') throw new BadRequestException('A boolean approval policy is required.');
+        return this.prisma.$transaction(async tx => {
+            await lockPeriodReview(tx);
+            await this.property(tx, locationId, actor, Permission.PROPERTY_MANAGE);
+            if (!['SUPER_ADMIN','OWNER','ADMIN'].includes(actor.role)) throw new ForbiddenException('Company administrator required.');
+            if (await this.required(tx, locationId) === required) return { requireApproval: required };
+            // A policy change must never preserve an apparently final prior review.
+            const sheets = await tx.timesheet.findMany({ where: { locationId, status: { in: ['SUBMITTED','IN_REVIEW','APPROVED'] } } });
+            for (const sheet of sheets) {
+                await tx.timesheet.update({ where: { id: sheet.id }, data: { status: 'CORRECTION_REQUIRED', currentStepOrder: 1, version: { increment: 1 } } });
+                await tx.timesheetApprovalHistory.create({ data: { timesheetId: sheet.id, actorId: actor.id, previousStatus: sheet.status, newStatus: 'CORRECTION_REQUIRED', stepOrder: sheet.currentStepOrder, notes: 'Branch approval requirement changed; review invalidated.' } });
+            }
+            await tx.timesheetPeriod.updateMany({ where: { locationId, status: { in: ['CLOSED','PROCESSING'] } }, data: { status: 'OPEN' } });
+            await tx.propertyOperationalConfig.upsert({ where: { locationId }, create: { locationId, requireApproval: required }, update: { requireApproval: required } });
+            await tx.auditLog.create({ data: { actorId: actor.id, action: 'BRANCH_APPROVAL_POLICY_CHANGED', targetEntity: 'Location:'+locationId, details: { requireApproval: required } } });
+            return { requireApproval: required };
+        });
+    }
     private async property(db: any, id: string, actor: any, permission: Permission) {
         if (!actor || !ADMIN_ROLES.includes(actor.role))
             throw new ForbiddenException('Administrator access required.');
@@ -103,6 +125,7 @@ export class PeriodApprovalService {
     async review(id: string, actor: any) {
         return this.prisma.$transaction(async (tx) => {
             const { period, property } = await this.period(tx, id, actor, Permission.TIME_VIEW), source = await this.source(tx, period);
+            const requireApproval = await this.required(tx, property.id);
             const sheets = await tx.timesheet.findMany({ where: { timesheetPeriodId: id }, include: { approvalHistory: { orderBy: { createdAt: 'desc' }, include: { actor: { select: { firstName: true, lastName: true } } } } } });
             const groups = new Map(source.groups.map(g => [g.user.id, g]));
             for (const sheet of sheets)
@@ -110,9 +133,10 @@ export class PeriodApprovalService {
                     const user = await tx.user.findUnique({ where: { id: sheet.userId }, select: { id: true, firstName: true, lastName: true, employeeNumber: true } });
                     groups.set(sheet.userId, { user, workedMinutes: 0, incompleteShifts: 0, pendingCorrections: 0, correctionCount: 0, digest: reviewDigest([]) });
                 }
-            return { period, property, orphanAttendance: source.orphan, canSubmit: this.authz.hasPermission(actor, Permission.TIME_APPROVE, property.id, property.companyId), rows: [...groups.values()].map(g => {
+            return { period, property, requireApproval, orphanAttendance: source.orphan, canSubmit: requireApproval && this.authz.hasPermission(actor, Permission.TIME_APPROVE, property.id, property.companyId), rows: [...groups.values()].map(g => {
                     const s = sheets.find(s => s.userId === g.user.id), snapshot: any = s?.reviewSnapshot;
-                    return { staff: g.user, workedMinutes: g.workedMinutes, workedHours: g.workedMinutes / 60, incompleteShifts: g.incompleteShifts, correctionCount: g.correctionCount, pendingCorrections: g.pendingCorrections, timesheetId: s?.id || null, status: s?.status || 'DRAFT', version: s?.version || 0, currentStepOrder: s?.currentStepOrder || 1, steps: snapshot?.workflow?.steps || [], stale: !!snapshot && snapshot.digest !== g.digest, history: s?.approvalHistory || [] };
+                    const shifts = (g.shifts || []).map((shift: any) => ({ id: shift.id, status: shift.status, clockIn: shift.effectiveClockIn || shift.clockInTimestamp, clockOut: shift.effectiveClockOut || shift.clockOutTimestamp }));
+                    return { staff: g.user, shifts, workedMinutes: g.workedMinutes, workedHours: g.workedMinutes / 60, incompleteShifts: g.incompleteShifts, correctionCount: g.correctionCount, pendingCorrections: g.pendingCorrections, timesheetId: s?.id || null, status: s?.status || 'DRAFT', version: s?.version || 0, currentStepOrder: s?.currentStepOrder || 1, steps: snapshot?.workflow?.steps || [], stale: !!snapshot && snapshot.digest !== g.digest, history: s?.approvalHistory || [] };
                 }), reviewToken: reviewDigest({ source: source.groups.map(g => [g.user.id, g.digest]), sheets: sheets.map(s => [s.id, s.version]).sort(), orphan: source.orphan }) };
         }, { isolationLevel: 'RepeatableRead', timeout: 60000 });
     }
@@ -120,6 +144,7 @@ export class PeriodApprovalService {
         return this.prisma.$transaction(async (tx) => {
             await lockPeriodReview(tx);
             const { period } = await this.period(tx, id, actor, Permission.TIME_APPROVE);
+            if (!await this.required(tx, period.locationId)) throw new ConflictException('Approval is not required. Review and export authoritative hours directly.');
             if (period.endDate >= new Date())
                 throw new ConflictException('Only completed calendar periods may be submitted.');
             const source = await this.source(tx, period), sheets = await tx.timesheet.findMany({ where: { timesheetPeriodId: id } });
@@ -152,6 +177,7 @@ export class PeriodApprovalService {
             if (!sheet)
                 throw new NotFoundException('Timesheet not found.');
             const { period } = await this.period(tx, sheet.timesheetPeriodId, actor, Permission.TIME_APPROVE);
+            if (!await this.required(tx, period.locationId)) throw new ConflictException('Approval is not required for this branch.');
             if (sheet.locationId !== period.locationId)
                 throw new ForbiddenException('Timesheet property mismatch.');
             if (sheet.version !== version || !['SUBMITTED', 'IN_REVIEW'].includes(sheet.status))

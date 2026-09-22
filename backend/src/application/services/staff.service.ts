@@ -59,8 +59,8 @@ export class StaffService {
     };
   }
 
-  async findAll(allowedLocationIds?: string[], currentUser?: any) {
-    const where: any = { status: 'ACTIVE' };
+  async findAll(allowedLocationIds?: string[], currentUser?: any, includeInactive = false) {
+    const where: any = includeInactive ? {} : { status: 'ACTIVE' };
 
     // 1. Enforce Company isolation for non-SUPER_ADMIN users
     if (currentUser && currentUser.role !== 'SUPER_ADMIN') {
@@ -542,8 +542,12 @@ export class StaffService {
       select: this.getStaffSelect(canViewPayRate),
     });
 
-    const updated = dto.pinCode || dto.status === 'ACTIVE' ? await this.prisma.$transaction(async tx => {
+    const updated = dto.pinCode || dto.status === 'ACTIVE' || dto.status === 'TERMINATED' ? await this.prisma.$transaction(async tx => {
       await lockPinIndex(tx);
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${id} FOR UPDATE`;
+      if (dto.status === 'TERMINATED' && await tx.workShift.findFirst({ where: { userId: id, status: 'OPEN' }, select: { id: true } })) {
+        throw new BadRequestException('Close or correct the open shift before deactivating Staff.');
+      }
       const result = await write(tx);
       await assertNoPinConflict(tx, id);
       return result;
@@ -606,9 +610,15 @@ export class StaffService {
 
     if (currentUser) {
       this.authzService.assertCanAccessEmployee(currentUser, user);
+      const properties = this.authzService.getEmployeePropertyIds(user);
+      if (!properties.some(p => this.authzService.hasPermission(currentUser, Permission.STAFF_DELETE, p, user.companyId)) && !this.authzService.hasCompanyPermission(currentUser, Permission.STAFF_DELETE, user.companyId)) throw new ForbiddenException('Staff deactivation permission required.');
     }
 
-    await this.prisma.user.update({ where: { id }, data: { status: 'TERMINATED' } });
+    await this.prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${id} FOR UPDATE`;
+      if (await tx.workShift.findFirst({ where: { userId: id, status: 'OPEN' }, select: { id: true } })) throw new BadRequestException('Close or correct the open shift before deactivating Staff.');
+      await tx.user.update({ where: { id }, data: { status: 'TERMINATED' } });
+    });
 
     if (currentUser) {
       await this.prisma.auditLog.create({

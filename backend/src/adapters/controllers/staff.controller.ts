@@ -10,6 +10,7 @@ import { TenantGuard } from '@adapters/guards/tenant.guard';
 
 @ApiTags('Staff')
 @Controller('api/v1/staff')
+@SetMetadata('SERVER_PROPERTY_SCOPE', true)
 @UseGuards(TenantGuard, PermissionsGuard)
 export class StaffController {
   constructor(private readonly staffService: StaffService) {}
@@ -20,7 +21,7 @@ export class StaffController {
   async findAll(@Req() req: any) {
     try {
       const allowedLocationIds = req.query.allowed_location_ids as string[] | undefined;
-      return await this.staffService.findAll(allowedLocationIds, req.user);
+      return await this.staffService.findAll(allowedLocationIds, req.user, req.query.include_inactive === 'true');
     } catch (e: any) {
       if (e instanceof HttpException) throw e;
       throw new BadRequestException('Failed to fetch staff members');

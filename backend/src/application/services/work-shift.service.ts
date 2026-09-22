@@ -57,7 +57,7 @@ export class WorkShiftService {
         const shiftLogs = openShift ? await tx.attendanceLog.findMany({ where: { workShiftId: openShift.id }, orderBy: { timestamp: 'asc' } }) : [];
         const config = openShift ? await tx.propertyOperationalConfig.findUnique({ where: { locationId: openShift.locationId } }) : null;
         const state = evaluateShiftState(userId, locationId, openShift, shiftLogs, timestamp, config?.maxShiftDurationMinutes ?? 960);
-        if (!state.allowedActions.includes(type)) throw new BadRequestException('Invalid punch sequence. Requested action is not allowed for the current shift.');
+        if (!state.allowedActions.includes(type)) throw new ConflictException('Invalid punch sequence. State changed or requested action is not allowed. Refresh Clock.');
         if (openShift && state.isOverdue) {
           await tx.workShift.update({ where: { id: openShift.id }, data: { status: 'MISSED_CLOCK_OUT' } });
           await tx.auditLog.create({ data: { actorId: userId, action: 'MISSED_CLOCK_OUT_DETECTED', targetEntity: `WorkShift:${openShift.id}`, details: { workShiftId: openShift.id, locationId: openShift.locationId } } });
@@ -82,7 +82,7 @@ export class WorkShiftService {
             const recentLog = await tx.attendanceLog.findFirst({
               where: { workShiftId: recentShift.id, punchType: AttendanceType.CLOCK_IN as any },
             });
-            return { shift: recentShift, log: recentLog };
+            throw new ConflictException('Recent clock-in already recorded. Refresh Clock before retrying.');
           }
 
           // Resolve RateConfiguration with strict precedence rules
@@ -234,6 +234,10 @@ export class WorkShiftService {
         return { shift: openShift, log };
       });
     } catch (error: any) {
+      if (error instanceof ConflictException || error?.code === 'P2002') {
+        // Outside the rolled-back punch transaction; no PIN, device payload or credentials.
+        await this.prisma.auditLog.create({ data: { actorId: userId, action: 'CONCURRENT_PUNCH_REJECTED', targetEntity: 'User:'+userId, details: { locationId, requestedAction: type, reason: 'STATE_CHANGED_OR_DUPLICATE' } } });
+      }
       // Phase 3.2 (L): Handle P2002 unique constraint violations cleanly
       if (error?.code === 'P2002') {
         throw new BadRequestException(

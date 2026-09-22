@@ -33,7 +33,7 @@ const correctionSelect = { id: true, status: true };
 const select = {
   id:true,userId:true,locationId:true,clockInTimestamp:true,clockOutTimestamp:true,effectiveClockIn:true,effectiveClockOut:true,
   regularMinutes:true,overtimeMinutes:true,status:true,
-  user:{select:identity}, location:{select:{id:true,name:true,locationCode:true,timezone:true,company:{select:{id:true,name:true}}}},
+  user:{select:identity}, location:{select:{id:true,name:true,locationCode:true,timezone:true,operationalConfig:{select:{requireApproval:true}},company:{select:{id:true,name:true}}}},
   department:{select:{name:true}},position:{select:{title:true}},
   logs:{select:{id:true,punchType:true,timestamp:true,effectiveTimestamp:true,corrections:{select:correctionSelect}}},
   timeCorrections:{select:correctionSelect},
@@ -42,6 +42,7 @@ function correctionRows(shift: any): any[] {
   return [...new Map([...shift.timeCorrections,...shift.logs.flatMap((log:any)=>log.corrections)].map((c:any)=>[c.id,c])).values()];
 }
 function approval(shift: any, sheets: any[]) {
+  if (shift.location.operationalConfig?.requireApproval === false) return { status: 'NOT_REQUIRED', approver: '' };
   const at = shift.effectiveClockIn || shift.clockInTimestamp;
   const matching = sheets.filter(s=>s.userId===shift.userId && s.locationId===shift.locationId && s.period.locationId===shift.locationId && s.period.startDate<=at && s.period.endDate>=at);
   if (matching.length !== 1) return { status: matching.length ? 'AMBIGUOUS' : 'NOT_AVAILABLE', approver: '' };

@@ -72,6 +72,12 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     } catch {}
   }
 
+  async consumeRefreshToken(userId: string, tokenId: string, token: string): Promise<boolean> {
+    try {
+      return Number(await this.client.eval("if redis.call('GET',KEYS[1])==ARGV[1] then redis.call('DEL',KEYS[1]); return 1 end; return 0", 1, `refresh_token:${userId}:${tokenId}`, token)) === 1;
+    } catch { return false; }
+  }
+
   async incrementFailedAttempts(key: string, ttlSeconds: number = 900, strict = false): Promise<number> {
     try {
       if (strict) {

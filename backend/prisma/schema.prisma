@@ -125,6 +125,7 @@ model PropertyOperationalConfig {
   invoiceCutoff           String   @default("SUNDAY_2359") @map("invoice_cutoff")
   roundingRules           Json?    @map("rounding_rules")
   maxShiftDurationMinutes Int      @default(960) @map("max_shift_duration_minutes")
+  requireApproval         Boolean  @default(true) @map("require_approval")
   geofenceLatitude        Float?   @map("geofence_latitude")
   geofenceLongitude       Float?   @map("geofence_longitude")
   geofenceRadiusMeters    Int?     @default(100) @map("geofence_radius_meters")

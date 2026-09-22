@@ -56,7 +56,7 @@ export const authApi = {
 
 /* ─── Staff ─────────────────────────────────────────────────────────────── */
 export const staffApi = {
-  list: () => request<any[]>('/staff'),
+  list: (includeInactive = false) => request<any[]>('/staff' + (includeInactive ? '?include_inactive=true' : '')),
   create: (data: any) => request<any>('/staff', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: any) => request<any>(`/staff/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   remove: (id: string) => request<any>(`/staff/${id}`, { method: 'DELETE' }),
@@ -122,12 +122,18 @@ export const reportsApi = {
   periodCsv: (kind: 'detail' | 'summary', params: Record<string,string>) => request<Blob>('/reports/attendance/' + kind + '.csv?' + new URLSearchParams(params), undefined, true),
 };
 export const periodApprovalApi = {
+  policy: (id:string,requireApproval:boolean)=>request<any>('/period-approvals/policy/'+id,{method:'POST',body:JSON.stringify({requireApproval})}),
   list: (locationId:string)=>request<any[]>('/period-approvals?location_id='+encodeURIComponent(locationId)),
   resolve: (locationId:string,start:string,type:string)=>request<any>('/period-approvals/resolve',{method:'POST',body:JSON.stringify({locationId,start,type})}),
   review: (id:string)=>request<any>('/period-approvals/'+id),
   submit: (id:string,reviewToken:string)=>request<any>('/period-approvals/'+id+'/submit',{method:'POST',body:JSON.stringify({reviewToken})}),
   transition: (id:string,version:number,action:string,notes:string)=>request<any>('/period-approvals/timesheets/'+id+'/transition',{method:'POST',body:JSON.stringify({version,action,notes})}),
   configure: (id:string,steps:any[])=>request<any>('/period-approvals/workflow/'+id,{method:'POST',body:JSON.stringify({steps})}),
+};
+export const timeCorrectionsApi = {
+  list: (locationId:string)=>request<any[]>('/time-corrections?location_id='+encodeURIComponent(locationId)),
+  create: (data:any)=>request<any>('/time-corrections',{method:'POST',body:JSON.stringify(data)}),
+  review: (id:string,action:'approve'|'reject',comments:string)=>request<any>('/time-corrections/'+id+'/'+action,{method:'PATCH',body:JSON.stringify({comments})}),
 };
 export const adminAccountsApi = {
   catalog:()=>request<any>('/admin-accounts/catalog'),

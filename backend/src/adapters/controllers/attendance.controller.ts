@@ -39,10 +39,7 @@ export class AttendanceController {
       if (!body.user_id) {
         throw new BadRequestException('Target employee user_id is required.');
       }
-      if (body.location_id) {
-        assertLocationAccess(req.user, body.location_id);
-      }
-      return await this.attendanceService.processStandardClock(body.user_id, body);
+      return await this.attendanceService.processAdminClock(body.user_id, body, req.user);
     } catch (e: any) {
       if (e instanceof HttpException) throw e;
       throw new BadRequestException('Failed to record proxy attendance punch');

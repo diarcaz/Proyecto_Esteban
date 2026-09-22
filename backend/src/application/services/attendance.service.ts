@@ -25,6 +25,16 @@ export class AttendanceService {
     return this.executePunchSequence(userId, dto.location_id, dto.type, dto.method, timestamp, dto.device_info, dto.location_coordinates);
   }
 
+  async processAdminClock(userId: string, dto: StandardClockDto, actor: any) {
+    if (!['SUPER_ADMIN', 'LOCATION_ADMIN'].includes(actor?.role)) throw new ForbiddenException('Administrative punch access denied.');
+    if (!userId || !dto.location_id) throw new BadRequestException('Employee and branch are required.');
+    const property = await this.prisma.location.findUnique({ where: { id: dto.location_id } });
+    const employee = await this.prisma.user.findUnique({ where: { id: userId }, select: { companyId: true, role: true } });
+    if (!property || !employee || employee.role !== 'WORKER' || employee.companyId !== property.companyId) throw new ForbiddenException('Employee branch context mismatch.');
+    new AuthorizationService().assertPermission(actor, Permission.TIME_EDIT, property.id, property.companyId);
+    return this.processStandardClock(userId, dto);
+  }
+
   /**
    * Authoritative Phase 4 Kiosk Property Resolver.
    * Enforces Constraint 1:

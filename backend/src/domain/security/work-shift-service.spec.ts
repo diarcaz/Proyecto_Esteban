@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { WorkShiftService } from '../../application/services/work-shift.service';
 import { TimeCorrectionService } from '../../application/services/time-correction.service';
 import { AuthorizationService, AuthUserContext } from './authorization.service';
@@ -282,7 +282,7 @@ export async function runWorkShiftServiceTests() {
   const clockInTime2 = new Date('2026-09-04T10:05:00Z');
   await assert.rejects(
     async () => workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, clockInTime2),
-    (err: any) => err instanceof BadRequestException && err.message.includes('Requested action is not allowed'),
+    (err: any) => err instanceof ConflictException && err.message.includes('State changed'),
     'TEST 2 FAILED: Second CLOCK_IN while open was not rejected',
   );
 
@@ -318,7 +318,7 @@ export async function runWorkShiftServiceTests() {
   dbAttendanceLogs.length = 0;
   await assert.rejects(
     async () => workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_OUT, AttendanceMethod.KIOSK_PIN, new Date()),
-    (err: any) => err instanceof BadRequestException && err.message.includes('Requested action is not allowed'),
+    (err: any) => err instanceof ConflictException && err.message.includes('State changed'),
     'TEST 5 FAILED: CLOCK_OUT without open shift was not rejected',
   );
 
@@ -328,7 +328,7 @@ export async function runWorkShiftServiceTests() {
   await workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, new Date());
   await assert.rejects(
     async () => workShiftService.processPunchSequence('worker-1', propA, AttendanceType.LUNCH_END, AttendanceMethod.KIOSK_PIN, new Date()),
-    (err: any) => err instanceof BadRequestException && err.message.includes('Requested action is not allowed'),
+    (err: any) => err instanceof ConflictException && err.message.includes('State changed'),
     'TEST 6 FAILED: LUNCH_END without LUNCH_START was not rejected',
   );
 
@@ -338,7 +338,7 @@ export async function runWorkShiftServiceTests() {
   await workShiftService.processPunchSequence('worker-1', propA, AttendanceType.LUNCH_START, AttendanceMethod.KIOSK_PIN, new Date());
   await assert.rejects(
     async () => workShiftService.processPunchSequence('worker-1', propA, AttendanceType.LUNCH_START, AttendanceMethod.KIOSK_PIN, new Date()),
-    (err: any) => err instanceof BadRequestException && err.message.includes('Requested action is not allowed'),
+    (err: any) => err instanceof ConflictException && err.message.includes('State changed'),
     'TEST 7 FAILED: Double LUNCH_START was not rejected',
   );
 
@@ -416,7 +416,7 @@ export async function runWorkShiftServiceTests() {
     reason: 'Forgot to clock out',
   };
 
-  const correctionReq = await timeCorrectionService.createCorrectionRequest(reqDto, { id: 'worker-1', companyId: compAlpha, assignedLocationIds: [propA] });
+  const correctionReq = await timeCorrectionService.createCorrectionRequest(reqDto, { id: 'worker-1', role: 'ADMIN', permissions: [Permission.TIME_EDIT], companyId: compAlpha, assignedLocationIds: [propA] });
   assert.strictEqual(correctionReq.status, 'PENDING', 'TEST 14 FAILED: Time correction request status should be PENDING');
   assert.strictEqual(correctionReq.originalTimestamp, null, 'TEST 14 FAILED: Original missing timestamp was not preserved as null');
 
@@ -435,7 +435,7 @@ export async function runWorkShiftServiceTests() {
     correction_type: 'MISSED_CLOCK_OUT' as const,
     reason: 'Forgot clock out at B',
   };
-  const tcrPropB = await timeCorrectionService.createCorrectionRequest(reqPropBDto, { id: 'worker-1', companyId: compAlpha, assignedLocationIds: [propB] });
+  const tcrPropB = await timeCorrectionService.createCorrectionRequest(reqPropBDto, { id: 'worker-1', role: 'ADMIN', permissions: [Permission.TIME_EDIT], companyId: compAlpha, assignedLocationIds: [propB] });
 
   await assert.rejects(
     async () => timeCorrectionService.approveCorrectionRequest(tcrPropB.id, { comments: 'Hack' }, supervisorPropA),
@@ -463,7 +463,7 @@ export async function runWorkShiftServiceTests() {
     requested_timestamp: '2026-09-01T18:00:00Z',
     correction_type: 'INCORRECT_CLOCK_OUT' as const,
     reason: 'Wrong time',
-  }, { id: 'worker-1', companyId: compAlpha, assignedLocationIds: [propB] });
+  }, { id: 'worker-1', role: 'ADMIN', permissions: [Permission.TIME_EDIT], companyId: compAlpha, assignedLocationIds: [propB] });
 
   const rejectedReq = await timeCorrectionService.rejectCorrectionRequest(tcrReject.id, { comments: 'Invalid time' }, supervisorPropB);
   assert.strictEqual(rejectedReq.status, 'REJECTED', 'TEST 18 FAILED: Correction request status should be REJECTED');
@@ -488,7 +488,7 @@ export async function runWorkShiftServiceTests() {
   await workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, punchTime1);
   await assert.rejects(
     async () => workShiftService.processPunchSequence('worker-1', propA, AttendanceType.CLOCK_IN, AttendanceMethod.KIOSK_PIN, punchTime2),
-    (err: any) => err instanceof BadRequestException,
+    (err: any) => err instanceof ConflictException,
     'TEST 20 FAILED: Double punch while open was not rejected',
   );
   assert.strictEqual(dbWorkShifts.length, 1, 'TEST 20 FAILED: Double punch created 2 open WorkShifts instead of 1!');
@@ -561,7 +561,7 @@ export async function runWorkShiftServiceTests() {
     requested_timestamp: '2026-09-01T17:00:00Z',
     correction_type: 'MISSED_CLOCK_OUT',
     reason: 'Forgot clock out',
-  }, { id: 'worker-1', companyId: compAlpha, assignedLocationIds: [propA] });
+  }, { id: 'worker-1', role: 'ADMIN', permissions: [Permission.TIME_EDIT], companyId: compAlpha, assignedLocationIds: [propA] });
 
   const results25 = await Promise.allSettled([
     timeCorrectionService.approveCorrectionRequest(tcr25.id, { comments: 'Supervisor A' }, supervisorPropA),
@@ -646,7 +646,7 @@ export async function runWorkShiftServiceTests() {
     requested_timestamp: '2026-09-05T07:45:00Z', // Before 08:00
     correction_type: 'MISSED_CLOCK_OUT',
     reason: 'Bad timestamp',
-  }, { id: 'worker-1', companyId: compAlpha, assignedLocationIds: [propA] });
+  }, { id: 'worker-1', role: 'ADMIN', permissions: [Permission.TIME_EDIT], companyId: compAlpha, assignedLocationIds: [propA] });
 
   await assert.rejects(
     async () => timeCorrectionService.approveCorrectionRequest(invalidOutTcr.id, {}, supervisorPropA),
@@ -674,7 +674,7 @@ export async function runWorkShiftServiceTests() {
     requested_timestamp: '2026-09-05T11:45:00Z', // Before lunchEnd!
     correction_type: 'MISSED_CLOCK_OUT',
     reason: 'Truncate shift before lunch ended',
-  }, { id: 'worker-1', companyId: compAlpha, assignedLocationIds: [propA] });
+  }, { id: 'worker-1', role: 'ADMIN', permissions: [Permission.TIME_EDIT], companyId: compAlpha, assignedLocationIds: [propA] });
 
   await assert.rejects(
     async () => timeCorrectionService.approveCorrectionRequest(tcrLunchConflict.id, {}, supervisorPropA),
@@ -709,7 +709,7 @@ export async function runWorkShiftServiceTests() {
     requested_timestamp: '2026-09-05T14:00:00Z',
     correction_type: 'INCORRECT_CLOCK_OUT',
     reason: 'Extend shift 1 into shift 2',
-  }, { id: 'worker-1', companyId: compAlpha, assignedLocationIds: [propA] });
+  }, { id: 'worker-1', role: 'ADMIN', permissions: [Permission.TIME_EDIT], companyId: compAlpha, assignedLocationIds: [propA] });
 
   await assert.rejects(
     async () => timeCorrectionService.approveCorrectionRequest(tcrOverlap.id, {}, supervisorPropA),

@@ -1,4 +1,6 @@
 import { SetMetadata } from '@nestjs/common';
+import { Roles } from '../decorators/roles-and-locations.decorator';
+import { UserRole } from '@prisma/client';
 import { HttpException, Controller, Get, Post, Patch, Body, Param, Query, Req, UseGuards, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { TimeCorrectionService } from '../../application/services/time-correction.service';
@@ -10,6 +12,8 @@ import { CreateTimeCorrectionDto, ReviewTimeCorrectionDto } from '@adapters/dtos
 
 @ApiTags('TimeCorrections')
 @Controller('api/v1/time-corrections')
+@SetMetadata('SERVER_PROPERTY_SCOPE', true)
+@Roles(UserRole.SUPER_ADMIN,UserRole.OWNER,UserRole.ADMIN,UserRole.MANAGER,UserRole.LOCATION_ADMIN,UserRole.SUPERVISOR)
 @UseGuards(TenantGuard, PermissionsGuard)
 export class TimeCorrectionController {
   constructor(private readonly timeCorrectionService: TimeCorrectionService) {}
