@@ -90,7 +90,7 @@ test('124: unauthorized production reports component denies financial content', 
 test('124: permitted report displays unavailable authoritative values without calculated payroll', () => {
   session = { isAuthenticated: true, user: { ...manager, permissions: ['VIEW_PAYROLL'] } };
   const html = renderToStaticMarkup(React.createElement(ReportsView));
-  assert.match(html, /Final payroll values are unavailable/);
+  assert.match(html, /Payroll processing and invoicing are not included/);
   assert.doesNotMatch(html, /\$25|Total Pay|<table|Invoices/);
 });
 test('setup production component requires authenticated authorized administrator', () => {

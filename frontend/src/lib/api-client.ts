@@ -129,3 +129,10 @@ export const periodApprovalApi = {
   transition: (id:string,version:number,action:string,notes:string)=>request<any>('/period-approvals/timesheets/'+id+'/transition',{method:'POST',body:JSON.stringify({version,action,notes})}),
   configure: (id:string,steps:any[])=>request<any>('/period-approvals/workflow/'+id,{method:'POST',body:JSON.stringify({steps})}),
 };
+export const adminAccountsApi = {
+  catalog:()=>request<any>('/admin-accounts/catalog'),
+  list:()=>request<any[]>('/admin-accounts'),
+  create:(data:any)=>request<any>('/admin-accounts',{method:'POST',body:JSON.stringify(data)}),
+  update:(id:string,data:any)=>request<any>('/admin-accounts/'+id,{method:'PATCH',body:JSON.stringify(data)}),
+  reset:(id:string,password:string,version:string)=>request<any>('/admin-accounts/'+id+'/password',{method:'POST',body:JSON.stringify({password,version})}),
+};

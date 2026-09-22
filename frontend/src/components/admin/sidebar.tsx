@@ -28,10 +28,10 @@ import {
 const NAV_ITEMS = [
   { label: 'Live Overview', href: '/admin', icon: LayoutDashboard },
   { label: 'Live Attendance Logs', href: '/admin/punches', icon: Clock, badge: 'LIVE' },
-  { label: 'Shift Schedules', href: '/admin/schedules', icon: CalendarDays },
   { label: 'Staff Directory', href: '/admin/employees', icon: Users, isStaffBadge: true },
-  { label: 'Reports & Payroll', href: '/admin/reports', icon: FileBarChart },
+  { label: 'Time Reports', href: '/admin/reports', icon: FileBarChart },
   { label: 'Branch Locations', href: '/admin/locations', icon: MapPin, superAdminOnly: true },
+  { label: 'Access & Users', href: '/admin/access', icon: Users },
   { label: 'Settings', href: '/admin/settings', icon: Settings, superAdminOnly: true },
 ];
 
@@ -52,7 +52,7 @@ export function Sidebar() {
         const list = await staffApi.list();
         if (Array.isArray(list)) {
           const filtered = list.filter((item: any) => {
-            if (item.role === 'SUPER_ADMIN' || item.jobPositionCode === 'SUPER_ADMIN' || item.employeeNumber?.startsWith('ADM-')) {
+            if (item.role !== 'WORKER') {
               return false;
             }
             return selectedLocationId === 'ALL' || item.employeeAssignments?.some((a: any) => a.propertyId === selectedLocationId) || item.assignments?.some((a: any) => a.locationId === selectedLocationId);
@@ -121,6 +121,8 @@ export function Sidebar() {
             <Link
               key={item.href}
               title={item.label}
+              aria-label={item.label}
+              aria-current={isActive ? 'page' : undefined}
               href={item.href}
               className={`flex items-center justify-between rounded-xl px-3.5 py-3 text-xs font-extrabold transition-all relative ${
                 isActive
@@ -152,11 +154,11 @@ export function Sidebar() {
       <div className="p-3 border-t border-slate-800 space-y-2">
         {/* Sign Out Button */}
         <button
-          onClick={handleLogout}
+          aria-label="Sign out" onClick={handleLogout}
           className="w-full flex items-center gap-3 rounded-2xl bg-slate-950 hover:bg-rose-600/20 text-slate-400 hover:text-rose-300 p-3 text-xs font-extrabold border border-slate-800 hover:border-rose-500/30 transition-all cursor-pointer"
         >
           <LogOut className="h-4 w-4 shrink-0 text-slate-400 group-hover:text-rose-400" />
-          {!collapsed && <span>Cerrar Sesión</span>}
+          {!collapsed && <span>Sign out</span>}
         </button>
       </div>
     </aside>

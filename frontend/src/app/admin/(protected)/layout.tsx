@@ -1,5 +1,6 @@
 'use client';
 
+import { displayLabel } from '@/lib/display-labels';
 import { canOpenAdminRoute, isAdminRole } from '@/lib/admin-access';
 import { useLocationStore } from '@/store/use-location-store';
 import React, { useEffect } from 'react';
@@ -38,7 +39,7 @@ export default function AdminProtectedLayout({ children }: { children: React.Rea
       <div className="min-h-screen w-full bg-slate-950 flex items-center justify-center font-sans text-slate-400">
         <div className="flex items-center gap-3 text-xs font-bold">
           <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
-          <span>Verificando credenciales y redirigiendo a inicio de sesión...</span>
+          <span>Checking your session…</span>
         </div>
       </div>
     );
@@ -47,7 +48,7 @@ export default function AdminProtectedLayout({ children }: { children: React.Rea
   const permitted = canOpenAdminRoute(user, pathname, selectedLocationId);
 
   return (
-    <div className="flex h-screen w-full bg-slate-950 text-slate-100 overflow-hidden font-sans">
+    <div className="flex h-dvh w-full bg-slate-950 text-slate-100 overflow-hidden font-sans">
       <Sidebar />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -67,14 +68,14 @@ export default function AdminProtectedLayout({ children }: { children: React.Rea
               <div className="flex flex-col text-left">
                 <span className="text-xs font-extrabold text-white">{user?.name || 'Administrator'}</span>
                 <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-1">
-                  <ShieldCheck className="h-3 w-3" /> {user?.role || 'LOCATION_ADMIN'}
+                  <ShieldCheck className="h-3 w-3" /> {displayLabel(user?.role || 'LOCATION_ADMIN')}
                 </span>
               </div>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 lg:p-7 bg-slate-950 print:bg-white print:p-0 print:overflow-visible">{permitted ? children : <p role="alert">Access Denied: missing permission for this module.</p>}</main>
+        <main className="flex-1 overflow-y-auto p-4 lg:p-7 bg-slate-950 print:bg-white print:p-0 print:overflow-visible">{permitted ? children : <p role="alert">You do not have access to this section. Contact your administrator if you need access.</p>}</main>
       </div>
     </div>
   );

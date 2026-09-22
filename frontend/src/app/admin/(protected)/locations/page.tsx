@@ -59,11 +59,11 @@ export default function LocationsPage() {
         setLocations(mapped);
       } else {
         setLocations([]);
-        setApiError('No authorized properties available.');
+        setApiError('No branches available for this account.');
       }
     } catch {
       setLocations([]);
-      setApiError('Unable to load authorized properties.');
+      setApiError('Unable to load branches. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -81,7 +81,7 @@ export default function LocationsPage() {
         </div>
         <h2 className="text-xl font-black text-white">Access Denied</h2>
         <p className="text-xs text-slate-400 max-w-md">
-          Property viewing permission is required.
+          You need permission to view branches.
         </p>
         <Link href="/admin" className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white transition-all shadow-md">
           Return to Main Overview
@@ -120,7 +120,7 @@ export default function LocationsPage() {
       await fetchLocations();
       useLocationStore.getState().fetchLocations();
       setShowAddModal(false);
-      showToast(`Branch location "${formData.name}" created and saved to database!`);
+      showToast(`Branch location "${formData.name}" created and saved.`);
     } catch (err: any) {
       showToast(safePropertyError(err, 'Unable to create property. No changes were saved.'), true);
     } finally {
@@ -138,7 +138,7 @@ export default function LocationsPage() {
       await fetchLocations();
       useLocationStore.getState().fetchLocations();
       setEditingLoc(null);
-      showToast(`Branch "${formData.name}" updated in database!`);
+      showToast(`Branch "${formData.name}" updated.`);
     } catch (err: any) {
       showToast(safePropertyError(err, 'Unable to update property. No changes were saved.'), true);
     } finally {
@@ -155,7 +155,7 @@ export default function LocationsPage() {
       await fetchLocations();
       useLocationStore.getState().fetchLocations();
       setDeletingLoc(null);
-      showToast(`Branch "${deletingLoc.name}" deleted from database!`);
+      showToast(`Branch "${deletingLoc.name}" deleted.`);
     } catch (err: any) {
       showToast(safePropertyError(err, 'Unable to delete property.'), true);
     } finally {
@@ -167,7 +167,7 @@ export default function LocationsPage() {
     <div className="space-y-6 font-sans">
       {/* Toast Alert */}
       {toastMessage && (
-        <div role={toastMessage.isError ? 'alert' : 'status'} className={`p-4 rounded-2xl text-white flex items-center gap-3 shadow-2xl border text-xs font-bold animate-bounce z-50 ${toastMessage.isError ? 'bg-amber-600/95 border-amber-400' : 'bg-emerald-600/95 border-emerald-400'}`}>
+        <div role={toastMessage.isError ? 'alert' : 'status'} className={`p-4 rounded-2xl text-white flex items-center gap-3 shadow-2xl border text-xs font-bold  z-50 ${toastMessage.isError ? 'bg-amber-600/95 border-amber-400' : 'bg-emerald-600/95 border-emerald-400'}`}>
           <CheckCircle2 className="h-5 w-5 shrink-0" /><span>{toastMessage.msg}</span>
         </div>
       )}
@@ -185,9 +185,9 @@ export default function LocationsPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
-            Branch Locations &amp; Kiosks <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">NexuStaff Branches</span>
+            Branch Locations <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">NexuStaff Branches</span>
           </h2>
-          <p className="text-xs text-slate-400 font-medium">Manage branch locations, addresses and timezones. Pair terminals through Clock setup.</p>
+          <p className="text-xs text-slate-400 font-medium">Manage branch locations, addresses and timezones. Use Terminal Setup in Settings to pair a clock device.</p>
         </div>
         <button disabled={!canCreate} onClick={openAddModal} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs shadow-lg transition-all active:scale-95 cursor-pointer">
           <Plus className="h-4 w-4" /> Add New Branch Location
@@ -196,13 +196,13 @@ export default function LocationsPage() {
 
       {loading ? (
         <div className="flex items-center justify-center py-16 gap-3 text-slate-400 text-sm">
-          <Loader2 className="h-5 w-5 animate-spin" /> Loading locations from database...
+          <Loader2 className="h-5 w-5 animate-spin" /> Loading branches…
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {locations.filter(loc => selectedLocationId === 'ALL' || loc.id === selectedLocationId).map((loc) => (
             <div key={loc.id} className="connecteam-glass-card rounded-2xl p-5 border border-slate-800 space-y-4 relative">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-start flex-wrap gap-3 justify-between border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 rounded-xl bg-blue-600/20 text-blue-400 font-bold flex items-center justify-center border border-blue-500/30">
                     <Building2 className="h-5 w-5" />
@@ -221,7 +221,7 @@ export default function LocationsPage() {
                   <p className="text-lg font-black text-white">{loc.activeStaffCount ?? '—'}</p><p className="text-[10px] text-slate-500">Not a live on-site count</p>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1">
-                  <Link href="/clock/setup" className="text-blue-400 underline">Clock terminal setup</Link>
+                  <span className="text-slate-400">Timezone: {loc.timezone}</span>
                 </div>
               </div>
 

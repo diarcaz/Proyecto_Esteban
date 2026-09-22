@@ -7,5 +7,5 @@ import React from 'react';
  * Protected shell logic lives exclusively in admin/(protected)/layout.tsx.
  */
 export default function AdminRootLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return <div className="admin-theme">{children}</div>;
 }

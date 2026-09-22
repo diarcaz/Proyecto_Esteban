@@ -68,6 +68,7 @@ async function main() {
   // 2.5 Admin user for system management
   const adminUser = await prisma.user.create({
     data: {
+      companyId: company.id,
       employeeNumber: 'ADM-0001',
       firstName: 'Arthur',
       lastName: 'Pendelton',

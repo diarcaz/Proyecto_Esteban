@@ -1,3 +1,5 @@
+import { AdminAccountsService } from '@application/services/admin-accounts.service';
+import { AdminAccountsController } from '@adapters/controllers/admin-accounts.controller';
 import { PeriodApprovalService } from '@application/services/period-approval.service';
 import { PeriodApprovalController } from '@adapters/controllers/period-approval.controller';
 import { PeriodExportService } from './application/services/period-export.service';
@@ -50,6 +52,7 @@ import { TimeCorrectionController } from '@adapters/controllers/time-correction.
   ],
   controllers: [
     HealthController,
+    AdminAccountsController,
     PeriodApprovalController,
     OnboardingController,
     AttendanceController,
@@ -68,6 +71,7 @@ import { TimeCorrectionController } from '@adapters/controllers/time-correction.
     AttendanceService,
     ReportsService,
     PeriodExportService,
+    AdminAccountsService,
     PeriodApprovalService,
     StaffService,
     OnboardingService,

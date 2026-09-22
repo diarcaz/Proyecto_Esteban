@@ -24,6 +24,7 @@ export function canOpenAdminRoute(user: AdminIdentity | null | undefined, route:
   if (!user || !isAdminRole(user.role)) return false;
   if (route.startsWith('/admin/schedules') && !['SUPER_ADMIN', 'LOCATION_ADMIN', 'SUPERVISOR'].includes(user.role)) return false;
   const rules: Record<string, string[]> = {
+    '/admin/access': ['MANAGERS_VIEW', 'MANAGERS_CREATE', 'MANAGERS_EDIT'],
     '/admin/punches': ['TIME_VIEW'], '/admin/schedules': ['TIME_VIEW'],
     '/admin/employees': ['STAFF_VIEW'], '/admin/locations': ['PROPERTY_VIEW'],
     '/admin/reports': ['TIME_VIEW', 'VIEW_PAYROLL', 'VIEW_INVOICES'],

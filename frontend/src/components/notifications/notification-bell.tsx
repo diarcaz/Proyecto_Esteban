@@ -42,9 +42,9 @@ export function NotificationBell() {
           {
             id: `alert-${Date.now()}`,
             type: data.type === 'LATE_ATTENDANCE' ? 'LATE' : data.type === 'OVERTIME_ALERT' ? 'OVERTIME' : 'ANTI_TAMPER',
-            title: data.title || '🚨 Notificación de Asistencia',
+            title: data.title || 'Attendance alert',
             message: data.message,
-            time: 'Justo ahora',
+            time: 'Just now',
             read: false,
           },
           ...prev,
@@ -70,7 +70,9 @@ export function NotificationBell() {
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="relative p-2.5 rounded-2xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition-all cursor-pointer shadow-md"
-        title="Alertas de Asistencia en Tiempo Real"
+        title="Attendance alerts"
+        aria-label="Attendance alerts"
+        aria-expanded={isOpen}
       >
         <Bell className="h-5 w-5" />
         {unreadCount > 0 && (
@@ -81,20 +83,20 @@ export function NotificationBell() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-3 w-80 sm:w-96 rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl z-50 overflow-hidden font-sans text-xs animate-fade-in">
+        <div className="fixed left-3 right-3 top-32 sm:absolute sm:left-auto sm:right-0 sm:top-auto mt-3 sm:w-96 rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl z-50 overflow-hidden font-sans text-xs animate-fade-in">
           <div className="flex items-center justify-between p-4 bg-slate-950 border-b border-slate-800">
             <div className="flex items-center gap-2">
               <Bell className="h-4 w-4 text-blue-400" />
-              <span className="font-black text-white">Alertas en Tiempo Real</span>
+              <span className="font-black text-white">Attendance alerts</span>
               {unreadCount > 0 && (
                 <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 text-[10px] font-bold border border-rose-500/30">
-                  {unreadCount} nuevas
+                  {unreadCount} new
                 </span>
               )}
             </div>
             {unreadCount > 0 && (
               <button onClick={markAllAsRead} className="text-[10px] text-blue-400 hover:underline font-bold">
-                Marcar leídas
+                Mark all read
               </button>
             )}
           </div>
@@ -125,7 +127,8 @@ export function NotificationBell() {
 
                     <button
                       onClick={() => removeAlert(item.id)}
-                      className="text-slate-500 hover:text-rose-400 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label="Dismiss alert"
+                      className="text-slate-500 hover:text-rose-400 p-0.5 transition-opacity"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>

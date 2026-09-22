@@ -382,6 +382,7 @@ export class StaffService {
   }
 
   async create(dto: any, currentUser?: any) {
+    if (dto.role && dto.role !== 'WORKER') throw new ForbiddenException('Use Access & Users for administrative accounts.');
     if (currentUser) {
       // Privilege escalation safety check
       this.authzService.assertPrivilegeEscalationSafety(currentUser, dto.role, dto.permissions);
@@ -499,6 +500,7 @@ export class StaffService {
       },
     });
     if (!user) throw new NotFoundException(`Staff member ${id} not found.`);
+    if (user.role !== 'WORKER' || (dto.role && dto.role !== 'WORKER')) throw new ForbiddenException('Use Access & Users for administrative accounts.');
 
     let sharedPropIds: string[] = [];
     if (currentUser) {
@@ -584,6 +586,7 @@ export class StaffService {
       where: { id },
       select: {
         id: true,
+        role: true,
         companyId: true,
         firstName: true,
         lastName: true,
@@ -599,6 +602,7 @@ export class StaffService {
       },
     });
     if (!user) throw new NotFoundException(`Staff member ${id} not found.`);
+    if (user.role !== 'WORKER') throw new ForbiddenException('Use Access & Users for administrative accounts.');
 
     if (currentUser) {
       this.authzService.assertCanAccessEmployee(currentUser, user);

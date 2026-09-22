@@ -1,3 +1,5 @@
+import { Roles } from '../decorators/roles-and-locations.decorator';
+import { UserRole } from '@prisma/client';
 import { SetMetadata, Controller, Get, Post, Patch, Body, Param, Req, ParseUUIDPipe, UseGuards } from '@nestjs/common';
 import { OnboardingService } from '@application/services/onboarding.service';
 import { TenantGuard } from '@adapters/guards/tenant.guard';
@@ -6,6 +8,7 @@ import { AssignmentDto, OnboardEmployeeDto, DepartmentDto, PositionDto } from '@
 @SetMetadata('SERVER_PROPERTY_SCOPE', true)
 @Controller('api/v1/onboarding')
 @UseGuards(TenantGuard)
+@Roles(UserRole.SUPER_ADMIN,UserRole.OWNER,UserRole.ADMIN,UserRole.MANAGER,UserRole.LOCATION_ADMIN,UserRole.SUPERVISOR)
 export class OnboardingController {
   constructor(private readonly service: OnboardingService) {}
   @Get('properties/:id/catalog') catalog(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) { return this.service.catalog(id, req.user); }

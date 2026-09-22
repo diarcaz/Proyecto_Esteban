@@ -112,3 +112,55 @@
   transform-origin: 50% 100%;
   transition: transform 0.1s linear;
 }
+
+/* Admin-only light skin. Clock keeps its independent dark touchscreen palette. */
+.admin-theme { color-scheme: light; background: #f5f7fb; color: #17243b; min-height: 100dvh; }
+.admin-theme [class*="bg-slate-950"] { background-color: #f5f7fb; }
+.admin-theme [class*="bg-slate-900"], .admin-theme .panel,
+.admin-theme .connecteam-glass-card { background: #fff; border-color: #dce3ed; backdrop-filter: none; box-shadow: 0 2px 8px #17243b08; }
+.admin-theme [class*="bg-slate-800"] { background-color: #eaf0f7; }
+.admin-theme [class*="border-slate-"] { border-color: #dce3ed; }
+.admin-theme .text-white, .admin-theme .text-slate-100, .admin-theme .text-slate-200,
+.admin-theme .text-slate-300, .admin-theme .page-title { color: #17243b; }
+.admin-theme .text-slate-400, .admin-theme .text-slate-500 { color: #53627a; }
+.admin-theme .text-blue-300, .admin-theme .text-blue-400 { color: #1d4ed8; }
+.admin-theme .text-emerald-300, .admin-theme .text-emerald-400 { color: #047857; }
+.admin-theme .text-rose-300, .admin-theme .text-rose-400 { color: #be123c; }
+.admin-theme .text-amber-200, .admin-theme .text-amber-400 { color: #92400e; }
+.admin-theme [class*="bg-amber-950"] { background: #fffbeb; }
+.admin-theme [class*="bg-gradient-"], .admin-theme [class~="bg-blue-600"]:is(button,a),
+.admin-theme [class~="bg-rose-600/90"], .admin-theme [class~="bg-emerald-600/95"],
+.admin-theme [class~="bg-amber-600/95"], .admin-theme [class~="bg-amber-600"] { color: white; }
+.admin-theme [class*="bg-gradient-"] .text-white { color: white; }
+.admin-theme .page-title { font-weight: 700; }
+.admin-theme .eyebrow { color: #1d4ed8; }
+.admin-theme .status-badge { color: #334155; background: #f1f5f9; border-color: #cbd5e1; }
+.admin-theme table { width: 100%; min-width: 620px; border-collapse: collapse; text-align: left; }
+.admin-theme th { background: #f8fafc; color: #475569; padding: 12px 16px; font-weight: 600; }
+.admin-theme td { padding: 14px 16px; border-bottom: 1px solid #e2e8f0; color: #334155; }
+.admin-theme tbody tr:hover { background: #f8fafc; }
+.admin-theme input:not([type="checkbox"]), .admin-theme select, .admin-theme textarea { color: #17243b; background-color: white; min-height: 44px; max-width: 100%; }
+.admin-theme input::placeholder { color: #64748b; }
+.admin-theme input[type="checkbox"] { width: 18px; height: 18px; accent-color: #2563eb; vertical-align: middle; margin-right: 6px; }
+.admin-theme button, .admin-theme summary { min-height: 40px; }
+.admin-theme button:disabled { cursor: not-allowed; opacity: .5; }
+.admin-theme :is(button,a,input,select,textarea,summary):focus-visible { outline: 3px solid #60a5fa; outline-offset: 3px; }
+.admin-theme summary { cursor: pointer; padding-block: 8px; color: #1d4ed8; }
+.admin-theme [role="alert"] { border-radius: 10px; padding: 14px; background: #fff1f2; color: #9f1239; }
+.admin-theme [role="status"] { line-height: 1.6; }
+.admin-theme [class~="bg-emerald-950"] { background: #ecfdf5; color: #065f46; }
+.admin-theme .admin-sidebar { background: white; }
+.admin-theme .admin-sidebar nav { overflow-y: auto; min-height: 0; }
+.admin-theme .admin-sidebar a:hover:not([aria-current="page"]) { background: #eff6ff; color: #1d4ed8; }
+.admin-theme .admin-sidebar a[aria-current="page"] { color: white; }
+.admin-theme .fixed > .connecteam-glass-card { max-height: calc(100dvh - 32px); overflow-y: auto; }
+.admin-theme ::-webkit-scrollbar-track { background: #f1f5f9; }
+.admin-theme ::-webkit-scrollbar-thumb { background: #94a3b8; }
+@media (max-width: 767px) {
+  .admin-theme .admin-sidebar nav a { min-height: 48px; }
+  .admin-theme main { padding: 16px 12px; }
+  .admin-theme header select { max-width: min(100%, 240px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-theme *, .admin-theme *::before, .admin-theme *::after { animation: none !important; transition: none !important; }
+}
