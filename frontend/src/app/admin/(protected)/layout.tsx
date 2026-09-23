@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/use-auth-store';
 import { Sidebar } from '@/components/admin/sidebar';
 import { LocationSwitcher } from '@/components/admin/location-switcher';
 import { NotificationBell } from '@/components/notifications/notification-bell';
+import { AdminThemeToggle } from '@/components/admin/admin-theme';
 import { UserCircle, ShieldCheck, Loader2 } from 'lucide-react';
 
 export default function AdminProtectedLayout({ children }: { children: React.ReactNode }) {
@@ -62,6 +63,7 @@ export default function AdminProtectedLayout({ children }: { children: React.Rea
           </div>
 
           <div className="flex items-center gap-3">
+            <AdminThemeToggle />
             <NotificationBell />
             <div className="flex items-center gap-2.5 rounded-2xl border border-slate-800 bg-slate-950 px-3 py-1.5 shadow-md">
               <UserCircle className="h-5 w-5 text-blue-400" />

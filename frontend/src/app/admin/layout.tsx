@@ -1,4 +1,5 @@
 import React from 'react';
+import { AdminTheme } from '@/components/admin/admin-theme';
 
 /**
  * Neutral Root Admin Layout (Phase 4 Constraint 5).
@@ -7,5 +8,5 @@ import React from 'react';
  * Protected shell logic lives exclusively in admin/(protected)/layout.tsx.
  */
 export default function AdminRootLayout({ children }: { children: React.ReactNode }) {
-  return <div className="admin-theme">{children}</div>;
+  return <AdminTheme>{children}</AdminTheme>;
 }
