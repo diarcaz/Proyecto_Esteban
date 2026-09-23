@@ -38,6 +38,10 @@ class WorkflowDto {
 @Roles(UserRole.SUPER_ADMIN, UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.LOCATION_ADMIN, UserRole.SUPERVISOR)
 export class PeriodApprovalController {
     constructor(private readonly service: PeriodApprovalService) { }
+    @Get('policy/:locationId')
+    getPolicy(@Param('locationId') id: string, @Req() req: any) {
+        return this.service.getApprovalPolicy(id, req.user);
+    }
     @Post('policy/:locationId')
     policy(@Param('locationId') id: string, @Body() body: ApprovalPolicyDto, @Req() req: any) {
         return this.service.setApprovalPolicy(id, body.requireApproval, req.user);

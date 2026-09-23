@@ -122,6 +122,7 @@ export const reportsApi = {
   periodCsv: (kind: 'detail' | 'summary', params: Record<string,string>) => request<Blob>('/reports/attendance/' + kind + '.csv?' + new URLSearchParams(params), undefined, true),
 };
 export const periodApprovalApi = {
+  getPolicy: (id:string)=>request<{requireApproval:boolean}>('/period-approvals/policy/'+encodeURIComponent(id)),
   policy: (id:string,requireApproval:boolean)=>request<any>('/period-approvals/policy/'+id,{method:'POST',body:JSON.stringify({requireApproval})}),
   list: (locationId:string)=>request<any[]>('/period-approvals?location_id='+encodeURIComponent(locationId)),
   resolve: (locationId:string,start:string,type:string)=>request<any>('/period-approvals/resolve',{method:'POST',body:JSON.stringify({locationId,start,type})}),

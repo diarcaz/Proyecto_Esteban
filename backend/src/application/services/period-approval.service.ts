@@ -11,6 +11,11 @@ export class PeriodApprovalService {
     private async required(db: any, locationId: string): Promise<boolean> {
         return (await db.propertyOperationalConfig.findUnique({ where: { locationId } }))?.requireApproval !== false;
     }
+    async getApprovalPolicy(locationId: string, actor: any) {
+        await this.property(this.prisma, locationId, actor, Permission.PROPERTY_MANAGE);
+        if (!['SUPER_ADMIN','OWNER','ADMIN'].includes(actor.role)) throw new ForbiddenException('Company administrator required.');
+        return { requireApproval: await this.required(this.prisma, locationId) };
+    }
     async setApprovalPolicy(locationId: string, required: boolean, actor: any) {
         if (typeof required !== 'boolean') throw new BadRequestException('A boolean approval policy is required.');
         return this.prisma.$transaction(async tx => {

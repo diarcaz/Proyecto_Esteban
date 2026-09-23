@@ -1,5 +1,6 @@
 'use client';
 import { TimeCorrections } from './time-corrections';
+import { BranchApprovalPolicy } from './branch-approval-policy';
 import { displayLabel } from '@/lib/display-labels';
 import { useState, useEffect, useRef } from 'react';
 import { periodApprovalApi } from '@/lib/api-client';
@@ -39,10 +40,11 @@ export function PeriodReview() {
             setPeriods(rows);
     } }
     const canAct = can(user, 'TIME_APPROVE', selectedLocationId);
-    const configure = user && ['SUPER_ADMIN', 'OWNER', 'ADMIN'].includes(user.role) && can(user, 'PROPERTY_MANAGE', selectedLocationId);
+    const configure = selectedLocationId && selectedLocationId !== 'ALL' && user && ['SUPER_ADMIN', 'OWNER', 'ADMIN'].includes(user.role) && can(user, 'PROPERTY_MANAGE', selectedLocationId);
     return <section className="panel p-5 space-y-4"><h3 className="font-semibold">Period review & approval</h3>
     {selectedLocationId === 'ALL' ? <p>Select one branch to review its periods. Complete-period exports above can aggregate authorized branches.</p> : <>
-    {review && <div className="space-y-2"><p>{review.requireApproval === false ? 'Approval not required. Review and export authoritative hours directly. Incomplete shifts remain identified; no approval is implied.' : 'This branch requires approval before finalizing hours.'}</p>{configure && <label><input type="checkbox" checked={review.requireApproval !== false} disabled={busy} onChange={e => { const required=e.target.checked; void run(async()=>{await periodApprovalApi.policy(selectedLocationId,required);await load(review.period.id);}); }}/>Require approval before finalizing hours</label>}<p className="text-sm text-slate-400">Changing this branch policy invalidates existing final reviews and preserves their history.</p></div>}
+    {configure && <BranchApprovalPolicy key={scope} locationId={selectedLocationId} onChanged={async () => { if (current.current !== scope) return; const id = review?.period.id; setReview(null); if (id) await load(id); }}/>}
+    {review && <div className="space-y-2"><p>{review.requireApproval === false ? 'Approval not required. Review and export authoritative hours directly. Incomplete shifts remain identified; no approval is implied.' : 'This branch requires approval before finalizing hours.'}</p></div>}
     <p className="text-sm text-slate-400">Review closed calendar periods, resolve incomplete shifts and pending corrections, then submit for the configured approval steps. In Review means approval is in progress. Correction Required means changes are needed before resubmission. Approved hours complete the review; Closed periods have finished all steps. Approved corrections require another review.</p>
     <div className="flex flex-wrap gap-3"><select aria-label="Review period type" className={field} value={type} onChange={e => setType(e.target.value)}><option value="weekly">Weekly</option><option value="biweekly">Biweekly</option></select><input aria-label="Review start date" type="date" className={field} value={start} onChange={e => setStart(e.target.value)}/><button disabled={busy || !start} onClick={() => run(async () => { const p = await periodApprovalApi.resolve(selectedLocationId, start, type); if (current.current === scope)
             await load(p.id); })}>Open period</button>
