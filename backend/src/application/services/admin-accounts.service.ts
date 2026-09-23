@@ -9,8 +9,10 @@ const ORDER = ['SUPER_ADMIN', ...ACCOUNT_ROLES, 'WORKER'];
 const include = { company: { select: { id: true, name: true } }, assignments: { select: { locationId: true } }, propertyAccess: { select: { propertyId: true, permissions: true, property: { select: { name: true, companyId: true } } } }, employeeAssignments: { select: { id: true } } };
 const select = { id: true, companyId: true, firstName: true, lastName: true, email: true, role: true, status: true, permissions: true, updatedAt: true, ...include };
 export function validateAdminPassword(password: string) {
-    if (typeof password !== 'string' || password.length < 16 || Buffer.byteLength(password, 'utf8') > 72 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/[0-9]/.test(password) || !/[^a-zA-Z0-9]/.test(password) || /password|changeme|qwerty|123456|nexustaff/i.test(password))
+    if (typeof password !== 'string' || password.length < 16 || Buffer.byteLength(password, 'utf8') > 72 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/[0-9]/.test(password) || !/[^a-zA-Z0-9]/.test(password))
         throw new BadRequestException('Use 16+ characters with uppercase, lowercase, number and symbol; maximum 72 UTF-8 bytes. Avoid common passwords.');
+    if (/password|changeme|qwerty|123456|nexustaff/i.test(password))
+        throw new BadRequestException({ code: 'PASSWORD_PREDICTABLE', message: 'Password rejected. Avoid common passwords and predictable sequences.' });
 }
 @Injectable()
 export class AdminAccountsService {

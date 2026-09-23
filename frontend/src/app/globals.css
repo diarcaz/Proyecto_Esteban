@@ -135,6 +135,8 @@
 .admin-theme .admin-primary-button:hover:enabled { background: #1d4ed8; border-color: #1d4ed8; }
 .admin-theme .admin-theme-toggle { background: var(--admin-surface); color: var(--admin-text); }
 .admin-theme .admin-theme-toggle:hover { background: var(--admin-hover); }
+.admin-theme .admin-secondary-button { background: var(--admin-surface); color: var(--admin-text); border-color: var(--admin-border); transition: background-color .15s; }
+.admin-theme .admin-secondary-button:hover:enabled { background: var(--admin-hover); }
 .admin-theme input:disabled, .admin-theme select:disabled, .admin-theme textarea:disabled { opacity: .6; cursor: not-allowed; }
 .admin-theme input, .admin-theme select, .admin-theme textarea { color-scheme: inherit; }
 .admin-theme { color-scheme: light; background: var(--admin-bg); color: var(--admin-text); min-height: 100dvh; }
