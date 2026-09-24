@@ -6,7 +6,7 @@ Module._load=function(r,...a){if(r==='react')return {...React,useState(initial){
 const Page=require('../src/app/admin/(protected)/employees/page.tsx').default;
 const detail={id:'u',firstName:'Actual',lastName:'Worker',employeeNumber:'EMP-TEST',status:'ACTIVE',assignments:[],readiness:[{propertyId:'p',name:'Property',clockReady:false,canEdit:false}],canViewPin:false,canResetPin:false};
 function render(v){values=v;cursor=0;return renderToStaticMarkup(Page());}
-test('server readiness false is Assignment Required despite active employee',()=>{const html=render({2:detail});assert.match(html,/Assignment Required/);assert.doesNotMatch(html,/>Clock Ready</);});
+test('server readiness false remains not ready despite active employee',()=>{const html=render({2:detail});assert.match(html,/Not Clock Ready/);assert.doesNotMatch(html,/>Clock Ready</);});
 test('inactive Staff details retain the authorized status editor and reactivation choice',()=>{const html=render({2:{...detail,status:'TERMINATED',readiness:[{...detail.readiness[0],canEdit:true}]}});assert.match(html,/Staff account status/);assert.match(html,/<option value="ACTIVE"/);assert.match(html,/Historical attendance is preserved/);});
 test('server PIN capability flags hide view/reset and any recovered value',()=>{const html=render({2:detail,12:'DO-NOT-DISPLAY'});assert.doesNotMatch(html,/View PIN|Reset PIN|DO-NOT-DISPLAY/);});
 test('authorized admin has explicit PIN view/reset actions and real Clock Ready status',()=>{const html=render({2:{...detail,canViewPin:true,canResetPin:true,readiness:[{...detail.readiness[0],clockReady:true}]}});assert.match(html,/View PIN/);assert.match(html,/Reset PIN/);assert.match(html,/>Clock Ready</);});

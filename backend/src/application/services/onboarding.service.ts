@@ -58,6 +58,7 @@ export class OnboardingService {
   async catalog(propertyId: string, actor: any) {
     const p = await this.property(this.prisma, actor, propertyId, [Permission.STAFF_VIEW, Permission.STAFF_CREATE, Permission.STAFF_EDIT, Permission.PROPERTY_MANAGE]);
     return {
+      timezone: p.timezone, propertyName: p.name,
       departments: await this.prisma.department.findMany({ where: { locationId: propertyId }, select: { id: true, name: true, deptCode: true }, orderBy: { name: 'asc' } }),
       positions: await this.prisma.position.findMany({ where: { locationId: propertyId, active: true }, select: { id: true, title: true, code: true, departmentId: true }, orderBy: { title: 'asc' } }),
       canManage: this.authz.hasPermission(actor, Permission.PROPERTY_MANAGE, propertyId, p.companyId),
@@ -138,12 +139,23 @@ export class OnboardingService {
     const allowed = properties.filter(p => this.authz.hasPermission(actor, Permission.STAFF_VIEW, p.id, p.companyId));
     if (!allowed.length && !this.authz.hasCompanyPermission(actor, Permission.STAFF_VIEW, user.companyId)) throw new ForbiddenException('Staff view permission required.');
     const readiness = await Promise.all(allowed.map(async p => {
-      let clockReady = false;
-      try { await resolveEmployeeClockAssignment(this.prisma, userId, p.id, new Date()); clockReady = user.status === 'ACTIVE' && !!user.pinCodeHash && !!user.pinLookupDigest; } catch {}
-      return { propertyId: p.id, name: p.name, clockReady, canEdit: this.authz.hasPermission(actor, Permission.STAFF_EDIT, p.id, p.companyId) };
+      const now = new Date();
+      let clockReady = false, resolved = false, reason = 'ASSIGNMENT_UNAVAILABLE';
+      try { await resolveEmployeeClockAssignment(this.prisma, userId, p.id, now); resolved = true; } catch (error) {
+        if (error instanceof ForbiddenException) {
+          const branchRows = rows.filter(a => a.propertyId === p.id);
+          const future = branchRows.filter(a => a.active && a.effectiveFrom > now && (!a.effectiveUntil || a.effectiveUntil >= a.effectiveFrom)).sort((a,b) => +a.effectiveFrom - +b.effectiveFrom)[0];
+          reason = future ? 'ASSIGNMENT_SCHEDULED' : branchRows.some(a => a.active && a.effectiveUntil && a.effectiveUntil < now) ? 'ASSIGNMENT_EXPIRED' : branchRows.length ? 'ASSIGNMENT_INACTIVE' : 'ASSIGNMENT_MISSING';
+        }
+      }
+      if (user.status !== 'ACTIVE') reason = 'STAFF_INACTIVE';
+      else if (!user.pinCodeHash || !user.pinLookupDigest) reason = 'PIN_MISSING';
+      else if (resolved) { clockReady = true; reason = 'READY'; }
+      const future = reason === 'ASSIGNMENT_SCHEDULED' ? rows.filter(a => a.propertyId === p.id && a.active && a.effectiveFrom > now).sort((a,b) => +a.effectiveFrom - +b.effectiveFrom)[0] : undefined;
+      return { propertyId: p.id, name: p.name, timezone: p.timezone, clockReady, reason, ...(future ? { effectiveFrom: future.effectiveFrom } : {}), canEdit: this.authz.hasPermission(actor, Permission.STAFF_EDIT, p.id, p.companyId) };
     }));
     return { id: user.id, firstName: user.firstName, lastName: user.lastName, employeeNumber: user.employeeNumber, status: user.status,
       readiness, canViewPin: allowed.some(p => this.authz.hasPermission(actor, Permission.VIEW_EMPLOYEE_PIN, p.id, p.companyId)), canResetPin: allowed.some(p => this.authz.hasPermission(actor, Permission.RESET_EMPLOYEE_PIN, p.id, p.companyId)),
-      assignments: visible.map(a => ({ id: a.id, propertyId: a.propertyId, property: a.property.name, department: a.department.name, position: a.position.title, effectiveFrom: a.effectiveFrom, effectiveUntil: a.effectiveUntil, active: a.active })) };
+      assignments: visible.map(a => ({ id: a.id, propertyId: a.propertyId, property: a.property.name, timezone: a.property.timezone, department: a.department.name, position: a.position.title, effectiveFrom: a.effectiveFrom, effectiveUntil: a.effectiveUntil, active: a.active })) };
   }
 }
