@@ -38,4 +38,4 @@ COPY --from=builder /app/package.json ./package.json
 EXPOSE 3000
 
 # Comando de arranque del servidor Next.js
-CMD ["npm", "start"]
+CMD ["sh", "-c", "exec npx next start -H 0.0.0.0 -p ${PORT:-3000}"]
