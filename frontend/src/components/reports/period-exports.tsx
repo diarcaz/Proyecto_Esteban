@@ -3,13 +3,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import { reportsApi } from '@/lib/api-client';
 import { can } from '@/lib/admin-access';
-import { periodParameters } from '@/lib/export-period';
+import { periodParameters, reportFilename } from '@/lib/export-period';
 import { useAuthStore } from '@/store/use-auth-store';
 import { useLocationStore } from '@/store/use-location-store';
 
 export function PeriodExports() {
   const {user,token}=useAuthStore();
-  const {selectedLocationId}=useLocationStore();
+  const {selectedLocationId,locations}=useLocationStore();
   const [period,setPeriod]=useState('weekly');
   const [start,setStart]=useState(''),[end,setEnd]=useState('');
   const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
@@ -24,7 +24,7 @@ export function PeriodExports() {
       const data=await reportsApi.periodCsv(kind,periodParameters(period,start,end,selectedLocationId));
       if(current.current!==requestedScope) return;
       const url=URL.createObjectURL(data),link=document.createElement('a');
-      link.href=url;link.download='attendance-'+kind+'.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+      link.href=url;link.download=reportFilename(kind,locations?.find(l=>l.id===selectedLocationId)?.name,period,start,end,!selectedLocationId||selectedLocationId==='ALL');link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
       setNotice('Complete period export downloaded. Incomplete shifts and unavailable approvals are explicitly marked.');
     } catch(e:any) {if(current.current===requestedScope)setError(e.message || 'Period export failed. No partial file was downloaded.');}
     finally {if(current.current===requestedScope)setBusy(false);}

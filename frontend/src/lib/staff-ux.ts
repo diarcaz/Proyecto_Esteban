@@ -20,8 +20,9 @@ export function branchTimestamp(value: string, timezone: string) {
 }
 export function staffNumber(value: string) { return value.startsWith('EMP-') ? value : 'EMP-' + value; }
 export const staffNumberHelp = 'Use EMP- followed by 1–40 letters, numbers or hyphens. Example: EMP-010101.';
-export function staffError(error: any) {
+export function staffError(error: any, branchName?: string) {
   const message = String(error?.message || '');
+  if (message === 'An active assignment already overlaps these dates at this property. End or deactivate it first.') return `This Staff member already has an overlapping assignment at ${branchName || 'this Branch'}. To change Department, Position or assignment dates, end or deactivate the current assignment first.`;
   if (message === 'A staff member with this staff number already exists.') return message;
   if (/employeeNumber|regular expression|Staff number/i.test(message)) return staffNumberHelp;
   const safe = [
