@@ -29,7 +29,7 @@ before(async()=>{
  worker=await onboard.create({firstName:'Pilot',lastName:'Staff',employeeNumber:'EMP-'+tag,pinCode:'492817',propertyId:branch.id,departmentId:department.id,positionId:position.id,effectiveFrom:'2020-01-01T00:00:00Z'},root);
  tokens=(await login(admin)).tokens;
 });
-after(async()=>{if(db){if(process.env.PILOT_RESTART_CHECK==='true'&&company&&foreign&&pilotStaff.length===20){require('fs').writeFileSync(require('path').join(__dirname,'../.local-pilot-restart.json'),JSON.stringify({tag,companyId:company.id,foreignId:foreign.id,branchId:branch.id,ownerId:owner.id,staffIds:pilotStaff}));}else for(const c of [company,foreign])if(c){await db.user.deleteMany({where:{companyId:c.id}});await db.company.delete({where:{id:c.id}});}}if(app)await app.close();});
+after(async()=>{if(db){if(process.env.PILOT_RESTART_CHECK==='true'&&company&&foreign&&pilotStaff.length===20){require('fs').writeFileSync(require('path').join(__dirname,'../.local-pilot-restart.json'),JSON.stringify({tag,companyId:company.id,foreignId:foreign.id,branchId:branch.id,ownerId:owner.id,staffIds:pilotStaff}));}else for(const c of [company,foreign])if(c){await db.timeCorrectionRequest.deleteMany({where:{property:{companyId:c.id}}});await db.user.deleteMany({where:{companyId:c.id}});await db.company.delete({where:{id:c.id}});}}if(app)await app.close();});
 test('password reset rejects previously issued access AND refresh tokens; new password works and old fails',async()=>{
  assert.equal((await http('/locations',tokens.accessToken)).status,200);
  await accounts.reset(admin.id,nextPassword,(await edit(admin.id)).version,root);

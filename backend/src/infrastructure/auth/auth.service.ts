@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ServiceUnavailableException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../persistence/prisma/prisma.service';
@@ -18,9 +18,14 @@ export class AuthService {
     private readonly configService: ConfigService,
   ) {}
 
+  private async loginLockout<T>(operation: () => Promise<T>): Promise<T> {
+    try { return await operation(); }
+    catch { throw new ServiceUnavailableException('Login temporarily unavailable. Please try later.'); }
+  }
+
   async login(dto: LoginDto) {
     const lockKey = `auth_login:${dto.email.toLowerCase()}`;
-    const failedAttempts = await this.redisService.getFailedAttempts(lockKey);
+    const failedAttempts = await this.loginLockout(() => this.redisService.getFailedAttempts(lockKey, true));
     if (failedAttempts >= 5) {
       throw new UnauthorizedException('Account temporarily locked due to multiple failed login attempts. Please try again in 15 minutes.');
     }
@@ -31,13 +36,13 @@ export class AuthService {
     });
 
     if (!user) {
-      await this.redisService.incrementFailedAttempts(lockKey, 900);
+      await this.loginLockout(() => this.redisService.incrementFailedAttempts(lockKey, 900, true));
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const isMatch = await bcrypt.compare(dto.password, user.passwordHash);
     if (!isMatch) {
-      const attempts = await this.redisService.incrementFailedAttempts(lockKey, 900);
+      const attempts = await this.loginLockout(() => this.redisService.incrementFailedAttempts(lockKey, 900, true));
       if (attempts >= 5) {
         throw new UnauthorizedException('Too many failed login attempts. Account temporarily locked for 15 minutes.');
       }
@@ -48,7 +53,7 @@ export class AuthService {
       throw new UnauthorizedException('User account is not active');
     }
 
-    await this.redisService.resetFailedAttempts(lockKey);
+    await this.loginLockout(() => this.redisService.resetFailedAttempts(lockKey, true));
 
     const tokenId = uuidv4();
     const tokens = await this.generateTokens(user, tokenId);

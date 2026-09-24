@@ -428,9 +428,9 @@ model TimeCorrectionRequest {
   updatedAt          DateTime             @updatedAt @map("updated_at")
   attendanceLog      AttendanceLog?       @relation(fields: [attendanceLogId], references: [id], onDelete: SetNull)
   workShift          WorkShift?           @relation(fields: [workShiftId], references: [id], onDelete: SetNull)
-  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  property           Location             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  requestedBy        User                 @relation("RequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  property           Location             @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  requestedBy        User                 @relation("RequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
   reviewedBy         User?                @relation("ReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
 
   @@map("time_correction_requests")
