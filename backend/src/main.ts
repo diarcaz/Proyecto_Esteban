@@ -18,6 +18,11 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule);
 
+  // Render's client address is provided by Cloudflare's validated
+  // CF-Connecting-IP header. Keep Express proxy trust disabled so caller
+  // supplied X-Forwarded-* headers never affect req.ip or other proxy APIs.
+  app.getHttpAdapter().getInstance().set('trust proxy', false);
+
   // Apply Helmet's default CSP to all application responses.
   app.use(helmet());
 

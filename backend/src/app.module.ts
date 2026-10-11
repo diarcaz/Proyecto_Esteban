@@ -31,6 +31,7 @@ import { RolesAndLocationsGuard } from '@adapters/guards/roles-and-locations.gua
 import { TenantGuard } from '@adapters/guards/tenant.guard';
 import { PermissionsGuard } from '@adapters/guards/permissions.guard';
 import { NotificationsGateway } from '@infrastructure/notifications/notifications.gateway';
+import { clientIpTracker } from '@infrastructure/security/client-ip';
 
 import { WorkShiftService } from '@application/services/work-shift.service';
 import { TimeCorrectionService } from '@application/services/time-correction.service';
@@ -41,12 +42,13 @@ import { TimeCorrectionController } from '@adapters/controllers/time-correction.
     ConfigModule.forRoot({
       isGlobal: true,
     }),
-    ThrottlerModule.forRoot([
-      {
+    ThrottlerModule.forRoot({
+      getTracker: (request) => clientIpTracker(request),
+      throttlers: [{
         ttl: 60000,
         limit: 100,
-      },
-    ]),
+      }],
+    }),
     RedisModule,
     AuthModule,
   ],

@@ -12,6 +12,7 @@ import { TenantGuard } from '@adapters/guards/tenant.guard';
 import { PermissionsGuard } from '@adapters/guards/permissions.guard';
 import { RequirePermissions } from '@adapters/decorators/permissions.decorator';
 import { Permission } from '@domain/permissions/permission.enum';
+import { getClientIp } from '@infrastructure/security/client-ip';
 
 @ApiTags('Attendance')
 @Controller('api/v1/attendance')
@@ -50,7 +51,7 @@ export class AttendanceController {
   @Public()
   @Throttle({ default: { limit: 60, ttl: 60000 } })
   async kioskIdentify(@Body() body: KioskPinDto, @Req() req: any) {
-    try { return await this.attendanceService.identifyKioskPin(body, req.ip || req.socket?.remoteAddress); }
+    try { return await this.attendanceService.identifyKioskPin(body, getClientIp(req)); }
     catch (e: unknown) {
       if (e instanceof HttpException) throw e;
       throw new BadRequestException('Unable to verify PIN. Please contact your administrator.');
