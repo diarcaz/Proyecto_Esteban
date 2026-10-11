@@ -1,14 +1,14 @@
 import { create } from 'zustand';
-import type { LocationMock } from '@/lib/mock-data';
 import { locationsApi } from '@/lib/api-client';
+import type { AuthorizedLocation } from '@/types/attendance';
 
 interface LocationState {
-  locations: LocationMock[];
+  locations: AuthorizedLocation[];
   isLoading: boolean;
   selectedLocationId: string;
   setSelectedLocationId: (id: string) => void;
   fetchLocations: () => Promise<void>;
-  getSelectedLocation: () => LocationMock | undefined;
+  getSelectedLocation: () => AuthorizedLocation | undefined;
 }
 
 export function isLocationMatching(itemLocId?: string, itemLocCode?: string, targetSelectedId?: string): boolean {
@@ -42,7 +42,7 @@ export const useLocationStore = create<LocationState>((set, get) => ({
     try {
       const data = await locationsApi.list();
       if (Array.isArray(data) && data.length > 0) {
-        const mapped: LocationMock[] = data.map((loc: any) => ({
+        const mapped: AuthorizedLocation[] = data.map((loc: any) => ({
           id: loc.id,
           name: loc.name,
           code: loc.code,

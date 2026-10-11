@@ -1,5 +1,5 @@
-# Imagen base ligera de Node.js 20 Alpine para el Backend NestJS
-FROM node:20-alpine AS builder
+# Imagen base ligera de Node.js 24 Alpine para el Backend NestJS
+FROM node:24-alpine AS builder
 
 # Instalar OpenSSL para compatibilidad de Prisma ORM en Alpine
 RUN apk add --no-cache openssl
@@ -11,7 +11,7 @@ COPY package*.json ./
 COPY prisma ./prisma/
 
 # Instalar dependencias del proyecto
-RUN npm install
+RUN npm ci
 
 # Copiar código fuente
 COPY . .
@@ -23,7 +23,7 @@ RUN npx prisma generate
 RUN npm run build
 
 # Etapa de ejecución liviana de producción
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 
 # Instalar OpenSSL para ejecución de Prisma en Alpine
 RUN apk add --no-cache openssl
@@ -36,7 +36,7 @@ COPY package*.json ./
 COPY prisma ./prisma/
 
 # Instalar dependencias necesarias para ejecución y CLI de Prisma
-RUN npm install
+RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 COPY scripts ./scripts
@@ -47,4 +47,3 @@ EXPOSE 3001
 
 # Comando de inicio: aplica migraciones pendientes y arranca servidor NestJS
 CMD ["node", "scripts/startup.cjs"]
-

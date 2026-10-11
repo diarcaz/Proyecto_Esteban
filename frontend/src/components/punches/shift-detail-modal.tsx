@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { PunchMock } from '@/lib/mock-data';
+import type { AttendancePunch } from '@/types/attendance';
 import { usePunchStore } from '@/store/use-punch-store';
 import { X, MapPin, Tablet, Clock, ShieldCheck, FileCheck, Edit3, CheckCircle2 } from 'lucide-react';
 
 interface ShiftDetailModalProps {
-  punch: PunchMock | null;
+  punch: AttendancePunch | null;
   onClose: () => void;
 }
 
@@ -16,8 +16,8 @@ export function ShiftDetailModal({ punch, onClose }: ShiftDetailModalProps) {
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  const [adjustedIn, setAdjustedIn] = useState(punch?.actualIn || '08:00 AM');
-  const [adjustedOut, setAdjustedOut] = useState(punch?.actualOut || '04:30 PM');
+  const [adjustedIn, setAdjustedIn] = useState(punch?.actualIn || '');
+  const [adjustedOut, setAdjustedOut] = useState(punch?.actualOut || '');
 
   if (!punch) return null;
 
@@ -89,7 +89,7 @@ export function ShiftDetailModal({ punch, onClose }: ShiftDetailModalProps) {
           <div className="grid grid-cols-4 gap-2 text-center p-3 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs">
             <div className="space-y-1">
               <span className="text-[9px] text-slate-500 font-bold uppercase">Clock In</span>
-              <p className="font-mono font-bold text-emerald-400">{punch.actualIn || '08:00 AM'}</p>
+              <p className="font-mono font-bold text-emerald-400">{punch.actualIn || '—'}</p>
             </div>
             <div className="space-y-1 border-l border-slate-800">
               <span className="text-[9px] text-slate-500 font-bold uppercase">Inicio Receso</span>
@@ -101,7 +101,7 @@ export function ShiftDetailModal({ punch, onClose }: ShiftDetailModalProps) {
             </div>
             <div className="space-y-1 border-l border-slate-800">
               <span className="text-[9px] text-slate-500 font-bold uppercase">Clock Out</span>
-              <p className="font-mono font-bold text-rose-400">{punch.actualOut || 'ON SHIFT'}</p>
+              <p className="font-mono font-bold text-rose-400">{punch.actualOut || 'INCOMPLETE / NO CLOCK OUT'}</p>
             </div>
           </div>
         </div>

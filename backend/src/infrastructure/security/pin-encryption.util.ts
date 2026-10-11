@@ -23,6 +23,10 @@ function getEncryptionKey(): Buffer {
     );
   }
 
+  if (rawKey === process.env.JWT_SECRET || rawKey === process.env.PIN_LOOKUP_KEY) {
+    throw new Error('FATAL: PIN_ENCRYPTION_KEY must be independent from JWT_SECRET and PIN_LOOKUP_KEY.');
+  }
+
   // Derive a 32-byte key using SHA-256 to ensure exact key length
   return crypto.createHash('sha256').update(rawKey).digest();
 }

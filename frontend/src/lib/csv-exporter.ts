@@ -1,6 +1,6 @@
-import { PunchMock } from './mock-data';
+import type { AttendancePunch } from '@/types/attendance';
 
-export function exportPunchesToCsv(punches: PunchMock[], filename: string = 'time_punches_payroll_report.csv') {
+export function exportPunchesToCsv(punches: AttendancePunch[], filename: string = 'time_punches_payroll_report.csv') {
   if (!punches || punches.length === 0) {
     alert('No time punch records available to export.');
     return;
@@ -33,15 +33,15 @@ export function exportPunchesToCsv(punches: PunchMock[], filename: string = 'tim
       `"${lastName}"`,
       `"${firstName}"`,
       `"${p.employeeNumber}"`,
-      `"${p.scheduledIn}"`,
+      `"${p.scheduledIn || 'N/A'}"`,
       `"${p.actualIn || 'N/A'}"`,
-      `"${p.scheduledOut}"`,
+      `"${p.scheduledOut || 'N/A'}"`,
       `"${p.actualOut || 'ON SHIFT'}"`,
       `"${p.takenLunch ? 'YES' : 'NO'}"`,
       `"${p.jobPositionCode}"`,
       `"${p.locationCode}"`,
       '"MAIN"',
-      (p.calculatedHours || 8.0).toFixed(2),
+      p.calculatedHours === undefined ? 'N/A' : p.calculatedHours.toFixed(2),
       `"${p.status}"`,
     ];
   });

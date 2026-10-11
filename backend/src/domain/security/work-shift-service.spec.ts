@@ -44,7 +44,10 @@ export async function runWorkShiftServiceTests() {
 
   // Mock State
   const now = new Date();
-  const pastDate = new Date(now.getTime() - 1000 * 60 * 60 * 24 * 30);
+  // These scenarios use fixed September 2026 punch timestamps. Keep the valid
+  // assignment effective before those fixtures instead of deriving it from
+  // wall-clock time (which made the positive case expire as the calendar moved).
+  const pastDate = new Date('2020-01-01T00:00:00.000Z');
 
   const dbUsers: any[] = [
     { id: 'worker-1', companyId: compAlpha, employeeNumber: 'EMP-001', firstName: 'John', lastName: 'Worker', role: 'WORKER', status: 'ACTIVE' },

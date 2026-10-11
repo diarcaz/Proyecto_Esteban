@@ -1,4 +1,4 @@
-import * as assert from 'assert';
+import assert from 'node:assert/strict';
 import * as bcrypt from 'bcrypt';
 import { ValidationPipe, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';

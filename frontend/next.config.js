@@ -1,3 +1,5 @@
+const path = require('path');
+
 if (process.env.NODE_ENV === 'production') {
   const value = process.env.NEXT_PUBLIC_API_URL;
   if (!value) throw new Error('NEXT_PUBLIC_API_URL is required before a production build/start');
@@ -7,6 +9,11 @@ if (process.env.NODE_ENV === 'production') {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  webpack(config) {
+    // Keep the @ alias explicit for webpack as well as TypeScript paths.
+    config.resolve.alias['@'] = path.resolve(__dirname, 'src');
+    return config;
+  },
 };
 
 module.exports = nextConfig;

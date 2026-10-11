@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { usePunchStore } from '@/store/use-punch-store';
 import { useLocationStore, isLocationMatching } from '@/store/use-location-store';
 import { formatHours } from '@/lib/utils';
-import { PunchMock } from '@/lib/mock-data';
+import type { AttendancePunch } from '@/types/attendance';
 import { exportPunchesToCsv } from '@/lib/csv-exporter';
 import { ShiftDetailModal } from './shift-detail-modal';
 import { CheckCircle, AlertCircle, Clock, Utensils, ExternalLink, FileSpreadsheet, ShieldCheck } from 'lucide-react';
@@ -12,7 +12,7 @@ import { CheckCircle, AlertCircle, Clock, Utensils, ExternalLink, FileSpreadshee
 export function PunchesTable() {
   const { punches, searchQuery, selectedPosition, activeFilterTab } = usePunchStore();
   const { selectedLocationId } = useLocationStore();
-  const [selectedPunch, setSelectedPunch] = useState<PunchMock | null>(null);
+  const [selectedPunch, setSelectedPunch] = useState<AttendancePunch | null>(null);
 
   const filteredPunches = punches.filter((p) => {
     // Location Filter
@@ -107,7 +107,7 @@ export function PunchesTable() {
 
                     <td className="px-4 py-3">
                       <div className="flex flex-col">
-                        <span className="text-[10px] text-slate-400">Sched: {punch.scheduledIn}</span>
+                          <span className="text-[10px] text-slate-400">Sched: {punch.scheduledIn || '—'}</span>
                         <span
                           className={`font-bold ${
                             punch.status === 'LATE' ? 'text-amber-400' : 'text-white'
@@ -120,7 +120,7 @@ export function PunchesTable() {
 
                     <td className="px-4 py-3">
                       <div className="flex flex-col">
-                        <span className="text-[10px] text-slate-400">Sched: {punch.scheduledOut}</span>
+                        <span className="text-[10px] text-slate-400">Sched: {punch.scheduledOut || '—'}</span>
                         <span className="font-bold text-white">
                           Actual: {punch.actualOut || <span className="text-emerald-400 animate-pulse font-extrabold">ON SHIFT (ACTIVE)</span>}
                         </span>

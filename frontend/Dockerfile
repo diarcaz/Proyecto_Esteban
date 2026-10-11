@@ -1,5 +1,5 @@
-# Imagen base ligera de Node.js 20 Alpine para el Frontend Next.js 14
-FROM node:20-alpine AS builder
+# Imagen base ligera de Node.js 24 Alpine para el Frontend Next.js
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -7,7 +7,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Instalar dependencias del proyecto
-RUN npm install
+RUN npm ci
 
 # Copiar código fuente
 COPY . .
@@ -20,7 +20,7 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN test -n "$NEXT_PUBLIC_API_URL" && npm run build
 
 # Etapa de ejecución de producción
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 
 WORKDIR /app
 
@@ -28,11 +28,10 @@ ENV NODE_ENV=production
 ENV PORT=3000
 
 COPY package*.json ./
-RUN npm install --only=production
+RUN npm ci --omit=dev
 
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 
 EXPOSE 3000

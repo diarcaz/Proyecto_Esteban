@@ -18,12 +18,8 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule);
 
-  // Security Headers via Helmet
-  app.use(
-    helmet({
-      contentSecurityPolicy: false, // Allowed for Swagger UI rendering
-    }),
-  );
+  // Apply Helmet's default CSP to all application responses.
+  app.use(helmet());
 
   app.enableCors({
     origin: allowedOrigins(),
@@ -34,6 +30,12 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
   if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'true') {
+    // Swagger UI embeds initialization code; keep its CSP exception confined to docs.
+    app.use('/api/docs', (_request, response, next) => {
+      response.removeHeader('Content-Security-Policy');
+      next();
+    });
+
     const config = new DocumentBuilder()
       .setTitle('NexuStaff Enterprise — Attendance & Staffing Management API')
       .setDescription('NexuStaff: Multi-location attendance tracking, double-shift management, and agency RBAC')
@@ -47,7 +49,7 @@ async function bootstrap() {
   }
 
   const port = process.env.PORT || 3001;
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
   console.log(`Backend Enterprise Attendance Service running on port ${port}`);
 }
 
